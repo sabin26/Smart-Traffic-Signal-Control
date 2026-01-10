@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-01-10T20:48:47.909337+05:45 by Eclipse SUMO netconvert 1.25.0
+<netconvertConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/netconvertConfiguration.xsd">
+
+    <input>
+        <type-files value="${SUMO_HOME}\data\typemap\osmNetconvert.typ.xml,${SUMO_HOME}\data\typemap\osmNetconvertUrbanDe.typ.xml,${SUMO_HOME}\data\typemap\osmNetconvertPedestrians.typ.xml,${SUMO_HOME}\data\typemap\osmNetconvertBicycle.typ.xml,${SUMO_HOME}\data\typemap\osmNetconvertAerialway.typ.xml"/>
+        <osm-files value="osm_bbox.osm.xml.gz"/>
+    </input>
+
+    <output>
+        <output-file value="osm.net.xml.gz"/>
+        <output.street-names value="true"/>
+        <output.original-names value="true"/>
+        <ptstop-output value="osm_stops.add.xml"/>
+        <ptline-output value="osm_ptlines.xml"/>
+        <ptline-clean-up value="true"/>
+    </output>
+
+    <projection>
+        <proj.utm value="true"/>
+    </projection>
+
+    <processing>
+        <geometry.remove value="true"/>
+        <lefthand value="true"/>
+    </processing>
+
+    <tls_building>
+        <tls.discard-simple value="true"/>
+        <tls.join value="true"/>
+        <tls.guess-signals value="true"/>
+        <tls.default-type value="actuated"/>
+    </tls_building>
+
+    <ramp_guessing>
+        <ramps.guess value="true"/>
+    </ramp_guessing>
+
+    <junctions>
+        <junctions.join value="true"/>
+    </junctions>
+
+    <pedestrian>
+        <crossings.guess value="true"/>
+    </pedestrian>
+
+    <railway>
+        <railway.topology.repair value="true"/>
+    </railway>
+
+    <formats>
+        <osm.bike-access value="true"/>
+        <osm.sidewalks value="true"/>
+    </formats>
+
+</netconvertConfiguration>
+-->
+
+<additional xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/additional_file.xsd">
+    <busStop id="-1281218812" name="Maiti Devi chowk" lane="-111965821#5_0" startPos="0.00" endPos="10.50" friendlyPos="true" lines="Gothatar-Purano Buspark">
+        <access lane="-1323452745#0_0" pos="35.65" length="172.82" friendlyPos="1"/>
+        <access lane="-1323453373_0" pos="20.14" length="168.62" friendlyPos="1"/>
+        <access lane="120430420#0_0" pos="0.00" length="7.54" friendlyPos="1"/>
+        <access lane="1323452745#0_0" pos="0.00" length="171.25" friendlyPos="1"/>
+        <access lane="1323453373_0" pos="0.00" length="168.54" friendlyPos="1"/>
+    </busStop>
+    <busStop id="-1281218814" name="Ratopul" lane="-120430418#7_0" startPos="0.00" endPos="20.34" friendlyPos="true" lines="2"/>
+    <busStop id="-1806066068" name="Kantipath" lane="-28543722#1_0" startPos="0.00" endPos="25.00" friendlyPos="true" lines="5 26">
+        <access lane="112116409_0" pos="0.00" length="18.29" friendlyPos="1"/>
+        <access lane="112116412#0_0" pos="0.00" length="26.45" friendlyPos="1"/>
+        <access lane="231885504_0" pos="0.00" length="11.20" friendlyPos="1"/>
+        <access lane="4840092_0" pos="0.00" length="26.58" friendlyPos="1"/>
+        <access lane="672194957_0" pos="28.72" length="11.13" friendlyPos="1"/>
+    </busStop>
+    <busStop id="-296319786" lane="-28598645_0" startPos="127.00" endPos="127.00" friendlyPos="true" lines="26">
+        <access lane="-1098795866#1_0" pos="0.00" length="111.14" friendlyPos="1"/>
+        <access lane="-1429921398_0" pos="0.00" length="125.36" friendlyPos="1"/>
+        <access lane="-193099760#0_0" pos="142.20" length="45.40" friendlyPos="1"/>
+        <access lane="1098795866#1_0" pos="26.46" length="115.94" friendlyPos="1"/>
+        <access lane="193099762#1_0" pos="51.27" length="51.76" friendlyPos="1"/>
+    </busStop>
+    <busStop id="-31148993" lane="-171215514_0" startPos="47.60" endPos="47.60" friendlyPos="true" lines="Nepal Yatayat">
+        <access lane="-4840054#1_0" pos="0.00" length="13.87" friendlyPos="1"/>
+        <access lane="-694797260_0" pos="5.20" length="56.58" friendlyPos="1"/>
+        <access lane="172385216#0_0" pos="0.00" length="113.52" friendlyPos="1"/>
+        <access lane="4840054#1_0" pos="114.13" length="13.86" friendlyPos="1"/>
+        <access lane="694797260_0" pos="128.32" length="61.38" friendlyPos="1"/>
+    </busStop>
+    <busStop id="-31150643" name="Purano Baneshwar" lane="-232104796_0" startPos="0.00" endPos="25.00" friendlyPos="true" lines="Gothatar-Purano Buspark">
+        <access lane="340947053#0_0" pos="0.81" length="305.18" friendlyPos="1"/>
+    </busStop>
+    <busStop id="-943246313" name="Ratna Park" lane="-693606876_0" startPos="0.00" endPos="15.00" friendlyPos="true" lines="5">
+        <access lane="1029933288_0" pos="0.00" length="22.30" friendlyPos="1"/>
+        <access lane="301779943#4_0" pos="100.94" length="15.28" friendlyPos="1"/>
+        <access lane="301779943#5_0" pos="0.00" length="15.08" friendlyPos="1"/>
+        <access lane="80913263#0_0" pos="0.00" length="11.77" friendlyPos="1"/>
+        <access lane="80913263#1_0" pos="0.00" length="18.66" friendlyPos="1"/>
+    </busStop>
+    <busStop id="1274184084" name="Purano Bus Park" lane="351926855#2_0" startPos="2.49" endPos="27.49" friendlyPos="true" lines="5 11 12">
+        <access lane="-169116994#1_0" pos="222.06" length="60.68" friendlyPos="1"/>
+        <access lane="-351926855#2_0" pos="0.00" length="11.02" friendlyPos="1"/>
+        <access lane="-351926855#3_0" pos="107.34" length="13.91" friendlyPos="1"/>
+        <access lane="169116994#1_0" pos="0.00" length="56.14" friendlyPos="1"/>
+        <access lane="301771441#1_0" pos="33.21" length="6.10" friendlyPos="1"/>
+    </busStop>
+    <busStop id="1279198122" name="Krishna Pauroti Stop" lane="120031048_0" startPos="0.00" endPos="0.88" friendlyPos="true" lines="2">
+        <access lane="-172385216#0_0" pos="14.77" length="22.87" friendlyPos="1"/>
+        <access lane="-172385216#1_0" pos="174.34" length="49.21" friendlyPos="1"/>
+        <access lane="-4840054#1_0" pos="0.00" length="126.32" friendlyPos="1"/>
+        <access lane="172385216#0_0" pos="0.00" length="39.40" friendlyPos="1"/>
+        <access lane="172385216#1_0" pos="0.00" length="64.19" friendlyPos="1"/>
+    </busStop>
+    <busStop id="1490234323" name="Ciy Center Stop" lane="301607092_0" startPos="54.80" endPos="79.80" friendlyPos="true" lines="2">
+        <access lane="-1116480111_0" pos="53.26" length="126.18" friendlyPos="1"/>
+        <access lane="-1306595425_0" pos="33.93" length="163.35" friendlyPos="1"/>
+        <access lane="1116480111_0" pos="0.00" length="124.65" friendlyPos="1"/>
+        <access lane="135737881_0" pos="173.30" length="12.73" friendlyPos="1"/>
+        <access lane="200904719_0" pos="38.59" length="152.05" friendlyPos="1"/>
+    </busStop>
+    <busStop id="1803547435" lane="169191890_0" startPos="35.99" endPos="35.99" friendlyPos="true" lines="Lagankhel - Naya Buspark (sajha)">
+        <access lane="-301637359#0_0" pos="0.00" length="27.85" friendlyPos="1"/>
+        <access lane="-301637359#1_0" pos="0.00" length="13.85" friendlyPos="1"/>
+        <access lane="301637359#0_0" pos="30.23" length="28.19" friendlyPos="1"/>
+        <access lane="301637359#1_0" pos="4.34" length="14.63" friendlyPos="1"/>
+        <access lane="301779943#0_0" pos="0.00" length="24.96" friendlyPos="1"/>
+    </busStop>
+    <busStop id="1806066068" name="Kantipath" lane="28543722#1_0" startPos="49.11" endPos="74.11" friendlyPos="true" lines="5">
+        <access lane="112116409_0" pos="0.00" length="18.29" friendlyPos="1"/>
+        <access lane="112116412#0_0" pos="0.00" length="26.45" friendlyPos="1"/>
+        <access lane="231885504_0" pos="0.00" length="11.20" friendlyPos="1"/>
+        <access lane="4840092_0" pos="0.00" length="26.58" friendlyPos="1"/>
+        <access lane="672194957_0" pos="28.72" length="11.13" friendlyPos="1"/>
+    </busStop>
+    <busStop id="2291478689" name="Putalisadak Stop" lane="231414548_2" startPos="0.00" endPos="15.00" friendlyPos="true" lines="Changu-Ratnapark"/>
+    <busStop id="2396022575" name="NAC stop" lane="172129845_0" startPos="117.82" endPos="142.82" friendlyPos="true" lines="Chyamasingh to Ratnapark">
+        <access lane="-1424809360_0" pos="0.00" length="33.82" friendlyPos="1"/>
+        <access lane="1174960072#2_0" pos="41.77" length="25.51" friendlyPos="1"/>
+        <access lane="1174960072#3_0" pos="0.00" length="25.50" friendlyPos="1"/>
+        <access lane="1424809360_0" pos="90.60" length="29.06" friendlyPos="1"/>
+        <access lane="301771441#2_0" pos="144.15" length="22.63" friendlyPos="1"/>
+    </busStop>
+    <busStop id="31148719" name="Dillibazaar stop" lane="120430420#9_0" startPos="31.90" endPos="56.90" friendlyPos="true"/>
+    <busStop id="31148727" lane="171227893_0" startPos="106.01" endPos="106.01" friendlyPos="true" lines="Gothatar-Purano Buspark"/>
+    <busStop id="31148993" lane="171215514_0" startPos="0.00" endPos="0.00" friendlyPos="true" lines="Nepal Yatayat">
+        <access lane="-4840054#1_0" pos="0.00" length="13.87" friendlyPos="1"/>
+        <access lane="-694797260_0" pos="5.20" length="56.58" friendlyPos="1"/>
+        <access lane="172385216#0_0" pos="0.00" length="113.52" friendlyPos="1"/>
+        <access lane="4840054#1_0" pos="114.13" length="13.86" friendlyPos="1"/>
+        <access lane="694797260_0" pos="128.32" length="61.38" friendlyPos="1"/>
+    </busStop>
+    <busStop id="31232256" name="Bir Hospital" lane="172387581_0" startPos="0.00" endPos="25.00" friendlyPos="true" lines="26 Chyamasingh to Ratnapark">
+        <access lane="-172387581_0" pos="105.16" length="10.36" friendlyPos="1"/>
+        <access lane="-172387590#2_0" pos="0.00" length="11.55" friendlyPos="1"/>
+        <access lane="-61163249_0" pos="13.57" length="47.49" friendlyPos="1"/>
+        <access lane="1396844865#1_0" pos="101.92" length="19.02" friendlyPos="1"/>
+        <access lane="301779943#3_0" pos="88.99" length="34.77" friendlyPos="1"/>
+    </busStop>
+    <busStop id="943246313" name="Ratna Park" lane="693606876_0" startPos="57.34" endPos="72.34" friendlyPos="true" lines="Chyamasingh to Ratnapark">
+        <access lane="1029933288_0" pos="0.00" length="22.30" friendlyPos="1"/>
+        <access lane="301779943#4_0" pos="100.94" length="15.28" friendlyPos="1"/>
+        <access lane="301779943#5_0" pos="0.00" length="15.08" friendlyPos="1"/>
+        <access lane="80913263#0_0" pos="0.00" length="11.77" friendlyPos="1"/>
+        <access lane="80913263#1_0" pos="0.00" length="18.66" friendlyPos="1"/>
+    </busStop>
+</additional>

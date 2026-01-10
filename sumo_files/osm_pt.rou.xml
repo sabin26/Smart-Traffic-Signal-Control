@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-01-10 20:48:54.157774 by Eclipse SUMO osmWebWizard.py v1_25_0+0000-ac6c5a6752d
+<configuration>
+    <net-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\osm.net.xml.gz"/>
+    <ptlines-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\osm_ptlines.xml"/>
+    <ptstops-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\osm_stops.add.xml"/>
+    <output-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\osm_pt.rou.xml"/>
+    <stopinfos-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\stopinfos.xml"/>
+    <routes-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\vehroutes.xml"/>
+    <trips-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\trips.trips.xml"/>
+    <min-stops value="0"/>
+    <extend-to-fringe value="True"/>
+    <random-begin value="True"/>
+    <seed value="42"/>
+    <ignore-errors value="True"/>
+    <vtype-prefix value="pt_"/>
+    <verbose value="True"/>
+</configuration>
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="pt_bus" vClass="bus"/>
+    <vType id="pt_tram" vClass="tram"/>
+    <vType id="pt_train" vClass="rail"/>
+    <vType id="pt_subway" vClass="subway"/>
+    <vType id="pt_light_rail" vClass="rail_urban"/>
+    <vType id="pt_monorail" vClass="rail_urban"/>
+    <vType id="pt_trolleybus" vClass="bus"/>
+    <vType id="pt_minibus" vClass="bus"/>
+    <vType id="pt_share_taxi" vClass="taxi"/>
+    <vType id="pt_aerialway" vClass="cable_car" length="2.5" width="2" personCapacity="4"/>
+    <vType id="pt_ferry" vClass="ship"/>
+    <route id="pt_bus_11:0" edges="171203194#0 171203194#1 351926855#0 351926855#1 351926855#2 351926855#3 171603744#0 171603744#1" >
+        <stop busStop="1274184084" duration="20" until="60.0"/> <!-- Purano Bus Park -->
+    </route>
+    <route id="pt_bus_12:0" edges="171203194#0 171203194#1 351926855#0 351926855#1 351926855#2 351926855#3 171603744#0 171603744#1" >
+        <stop busStop="1274184084" duration="20" until="61.0"/> <!-- Purano Bus Park -->
+    </route>
+    <route id="pt_bus_26:0" edges="172129845 231194709 172387593#0 172387593#1 172387593#2 172387597#0 172387597#1 172387590#1 172387590#2 172387581 4825630#0 4825630#1 172387564 4840092 176144614#0 176144614#1 176144614#2 111984925#0 111984925#1 550489464#5 169442477#0 169442477#1 169442477#2 169442477#3 753805283#0 753805283#1 165226102#0 165226102#1 165226102#2 753805280#1 753805280#2 753805280#3 28598634 172387586#0 172387586#1 172387586#2 172385224#0 172385224#1 172385224#2 172385224#4 172385224#5 172385224#6 172385224#7 172385224#8 432536757 196281733#0 196281733#1 172385223#0 172385223#1 28598645 -28598645 -172385223#1 -172385223#0 -196281733#1 1032703597#0 1032703597#1 196281724#1 196281724#2 196281724#3 196281724#4 602091965#0 224839047 195254871#0 195254871#1 195254871#2 195254871#3 -172385216#1 -172385216#0 -171215514 -4840054#1 -4840054#0 -4840057 -232516697#1 -567661914#3 -567661914#2 -567661914#1 -567661914#0 1420153231#1 232516698 171215507 -171603746 -693606876 218316959#1 -181388107 -80913265#3 -80913265#2 -80913265#1 172387581 4825630#0 4825630#1 672194957 -28543722#1 -28543722#0 -172387565#3 -172387565#2 -172387565#1 -172387565#0 753805285 172387589#0 172387589#1 172387589#3 -224839048#1 -224839048#0" >
+        <stop busStop="-296319786" duration="20" until="317.0"/> <!-- None -->
+        <stop busStop="31232256" duration="20" until="620.0"/> <!-- Bir Hospital -->
+    </route>
+    <route id="pt_bus_2:0" edges="4840264#0 4840264#1 4840264#2 4840264#3 4840264#4 4840264#5 173980141 111965835 -120430418#7 -120430418#6 -120430418#5 -120430418#3 -120430418#2 -120430418#1 -120430418#0 -279756910#1 -279756910#0 -1192329569 -232516700 -61164307#10 -61164307#9 -61164307#8 -61164307#7 -61164307#5 -61164307#4 -61164307#2 -61164307#1 -61164307#0 301607092 -891858757 891858756#0 891858756#1 -232661480#6 -232661480#5 -232661480#3 -232661480#2 -232661480#1 -232661480#0 120031048 -171215514 -4840054#1 -4840054#0 -229195912#0" >
+        <stop busStop="1490234323" duration="20" until="145.0"/> <!-- Ciy Center Stop -->
+        <stop busStop="1279198122" duration="20" until="226.0"/> <!-- Krishna Pauroti Stop -->
+    </route>
+    <route id="pt_bus_5:0" edges="-693606876 4825630#0 4825630#1 672194957 -28543722#1 -28543722#0 -172387565#3 -172387565#2 -172387565#1 -172387565#0 753805285 172387589#0 172387589#1 172387589#3 -224839048#1 -224839048#0" >
+        <stop busStop="-943246313" duration="20" until="35.0"/> <!-- Ratna Park -->
+    </route>
+    <route id="pt_bus_5:1" edges="171203194#0 171203194#1 351926855#0 351926855#1 351926855#2 351926855#3 171603744#0 171603744#1" >
+        <stop busStop="1274184084" duration="20" until="62.0"/> <!-- Purano Bus Park -->
+    </route>
+    <route id="pt_bus_5:2" edges="-351926855#3 1116869264 -344321403#5 -111984903#7 -111984903#6 -111984903#5 -111984903#4 -111984903#3 -111984903#1 -111984903#0 257759242#6 257759242#7 257759242#8 257759242#9 220025931 -171215507 -28579443 -550489466#1 -550489466#0 550489464#4 550489464#5 169442477#0 169442477#1 169442477#2 169442477#3 753805283#0 672195635#0 672195635#1 -4840283#1 -4840283#0 -224839048#1 -224839048#0" >
+    </route>
+    <route id="pt_bus_5:3" edges="224839048#0 224839048#1 4840283#0 4840283#1 4840283#2 4840283#3 753805281#0 753805281#1 28579337#0 28579337#1 28579337#2 28579337#3 28579337#4 28579337#5 28579337#6 550489464#2 550489464#3 550489466#0 550489466#1 28579443 171215507 -171603746 -693606876" >
+        <stop busStop="-943246313" duration="20" until="164.0"/> <!-- Ratna Park -->
+    </route>
+    <route id="pt_bus_5:4" edges="351926855#0 351926855#1 351926855#2 351926855#3 171603744#0 171603744#1" >
+        <stop busStop="1274184084" duration="20" until="48.0"/> <!-- Purano Bus Park -->
+    </route>
+    <route id="pt_bus_7:0" edges="351926855#2" >
+        <stop busStop="1274184084" duration="20" until="37.0"/> <!-- Purano Bus Park -->
+    </route>
+    <route id="pt_bus_Changu-Ratnapark:0" edges="1126610601 231414548 257759242#0 257759242#2 257759242#3 257759242#4 257759242#5 257759242#6 257759242#7 257759242#8 257759242#9" >
+        <stop busStop="2291478689" duration="20" until="41.0"/> <!-- Putalisadak Stop -->
+    </route>
+    <route id="pt_bus_Chyamasingh_to_Ratnapark:0" edges="172129845 231194709 172387593#0 172387593#1 172387593#2 172387597#0 172387597#1 172387590#1 172387590#2 172387581 693606876 171603746 171203194#0 171203194#1 351926855#0 351926855#1 351926855#2 351926855#3" >
+        <stop busStop="2396022575" duration="20" until="50.0"/> <!-- NAC stop -->
+        <stop busStop="31232256" duration="20" until="125.0"/> <!-- Bir Hospital -->
+        <stop busStop="943246313" duration="20" until="182.0"/> <!-- Ratna Park -->
+    </route>
+    <route id="pt_bus_Gothatar-Purano_Buspark:0" edges="171203194#0 171203194#1 351926855#0 351926855#1 351926855#2 1116869264 -344321403#5 -344321403#4 -344321403#2 -180209910#6 -180209910#5 -180209910#4 -180209910#3 -180209910#2 -180209910#1 -180209910#0 -257759242#0 -231414548 -1126610601 671888452 229195912#0 1200990066 171227893 169336486#0 -172333275#4 -172333275#2 -172333275#1 -172333275#0 172333286#3 179147289#0 649070248#1 649070248#2 126253284 508291596 126253278#2 -341884382#0 -508291611 -508291612 -508291613#2 -508291613#1 -508291613#0 -126253248 -111965821#5 111965821#5 120430420#0 120430420#1 120430420#2 120430420#3 120430420#4 120430420#6 120430420#7 120430420#8 120430420#9 28598668#0 201227516 682063061#3 111984897#0 111984897#1 111984897#2 111984897#3 -126253244#1 -126253244#0 112783312#2 -421268350 -508291612 -508291613#2 -508291613#1 -508291613#0 -126253248 -111965821#5 -111965821#4 -111965821#3 -111965821#2 -111965821#1 -111965821#0 -111965837 -121782640#7 -121782640#6 -121782640#4 -121782640#3 -121782640#1 -121782640#0 -232104796" >
+        <stop busStop="31148727" duration="20" until="208.0"/> <!-- None -->
+        <stop busStop="-1281218812" duration="20" until="397.0"/> <!-- Maiti Devi chowk -->
+        <stop busStop="31148719" duration="20" until="486.0"/> <!-- Dillibazaar stop -->
+        <stop busStop="-31150643" duration="20" until="702.0"/> <!-- Purano Baneshwar -->
+    </route>
+    <route id="pt_bus_Lagankhel_-_Naya_Buspark_(sajha):0" edges="172129845 231194709 172387593#0 172387593#1 172387593#2 169191890 172387590#1 172387590#2 172387581 4825630#0 4825630#1 672194957 -28543722#1 -28543722#0 -172387565#3 -172387565#2 -172387565#1 -172387565#0 753805285 172387589#0 172387589#1 172387589#3 -224839048#1 -224839048#0" >
+        <stop busStop="1803547435" duration="20" until="69.0"/> <!-- None -->
+    </route>
+    <route id="pt_bus_Nepal_Yatayat:0" edges="232095621 696973898#0 696973898#1 691745190#1 1199351810#0 1199351810#1 344347496#0 344347496#1 671888452 229195912#0 4840054#0 4840054#1 171215514 172385216#0 172385216#1 -4840288#1 -4840288#0 28598634 172387586#0 172387586#1 172387586#2" >
+        <stop busStop="31148993" duration="20" until="172.0"/> <!-- None -->
+    </route>
+    <route id="pt_bus_Nepal_Yatayat:1" edges="-28598645 -172385223#1 -172385223#0 -196281733#1 1032703597#0 1032703597#1 196281724#1 196281724#2 196281724#3 196281724#4 602091965#0 224839047 195254871#0 195254871#1 195254871#2 195254871#3 -172385216#1 -172385216#0 -171215514 -4840054#1 -4840054#0 -229195912#0" >
+        <stop busStop="-31148993" duration="20" until="160.0"/> <!-- None -->
+    </route>
+    <flow id="pt_bus_2:0" type="pt_bus" route="pt_bus_2:0" begin="15.0" end="3615.0" period="600" line="2:0" >
+        <param key="name" value="Ratna Park - Sundarijal"/>
+        <param key="completeness" value="0.33"/>
+    </flow>
+    <flow id="pt_bus_Chyamasingh_to_Ratnapark:0" type="pt_bus" route="pt_bus_Chyamasingh_to_Ratnapark:0" begin="326.0" end="3926.0" period="600" line="Chyamasingh_to_Ratnapark:0" >
+        <param key="name" value="Chyamasingh to Ratnapark"/>
+        <param key="completeness" value="0.10"/>
+    </flow>
+    <flow id="pt_bus_12:0" type="pt_bus" route="pt_bus_12:0" begin="383.0" end="3983.0" period="600" line="12:0" >
+        <param key="name" value="Ratnapark - Dhulikhel"/>
+        <param key="completeness" value="0.04"/>
+    </flow>
+    <flow id="pt_bus_Changu-Ratnapark:0" type="pt_bus" route="pt_bus_Changu-Ratnapark:0" begin="389.0" end="3989.0" period="600" line="Changu-Ratnapark:0" >
+        <param key="name" value="Changu-Ratnapark"/>
+        <param key="completeness" value="0.05"/>
+    </flow>
+    <flow id="pt_bus_Gothatar-Purano_Buspark:0" type="pt_bus" route="pt_bus_Gothatar-Purano_Buspark:0" begin="406.0" end="4006.0" period="600" line="Gothatar-Purano_Buspark:0" >
+        <param key="name" value="Gothatar-Purano Buspark"/>
+        <param key="completeness" value="0.40"/>
+    </flow>
+    <flow id="pt_bus_Lagankhel_-_Naya_Buspark_(sajha):0" type="pt_bus" route="pt_bus_Lagankhel_-_Naya_Buspark_(sajha):0" begin="441.0" end="4041.0" period="600" line="Lagankhel_-_Naya_Buspark_(sajha):0" >
+        <param key="name" value="Lagankhel - Naya Buspark (sajha)"/>
+        <param key="completeness" value="0.08"/>
+    </flow>
+    <flow id="pt_bus_Nepal_Yatayat:1" type="pt_bus" route="pt_bus_Nepal_Yatayat:1" begin="535.0" end="4135.0" period="600" line="Nepal_Yatayat:1" >
+        <param key="name" value="Gopi Krishna-Balkumari"/>
+        <param key="completeness" value="0.08"/>
+    </flow>
+    <flow id="pt_bus_5:0" type="pt_bus" route="pt_bus_5:0" begin="15.0" end="3615.0" period="600" line="5:0" >
+        <param key="name" value="Ratna Park-Budhanilkantha School"/>
+        <param key="completeness" value="0.18"/>
+    </flow>
+    <flow id="pt_bus_5:1" type="pt_bus" route="pt_bus_5:1" begin="17.0" end="3617.0" period="600" line="5:1" >
+        <param key="name" value="Purano Bus Park-Shivapuri"/>
+        <param key="completeness" value="0.08"/>
+    </flow>
+    <flow id="pt_bus_5:2" type="pt_bus" route="pt_bus_5:2" begin="52.0" end="3652.0" period="600" line="5:2" >
+        <param key="name" value="Shivapuri-Purano Bus Park"/>
+        <param key="completeness" value="0.08"/>
+    </flow>
+    <flow id="pt_bus_Nepal_Yatayat:0" type="pt_bus" route="pt_bus_Nepal_Yatayat:0" begin="119.0" end="3719.0" period="600" line="Nepal_Yatayat:0" >
+        <param key="name" value="Balkumari-Gopi Krishna"/>
+        <param key="completeness" value="0.08"/>
+    </flow>
+    <flow id="pt_bus_26:0" type="pt_bus" route="pt_bus_26:0" begin="131.0" end="3731.0" period="600" line="26:0" >
+        <param key="name" value="Purano Bus Park- Patan Dhoka"/>
+        <param key="completeness" value="0.14"/>
+    </flow>
+    <flow id="pt_bus_5:3" type="pt_bus" route="pt_bus_5:3" begin="134.0" end="3734.0" period="600" line="5:3" >
+        <param key="name" value="Budhanilkantha School- Ratna Park"/>
+        <param key="completeness" value="0.18"/>
+    </flow>
+    <flow id="pt_bus_5:4" type="pt_bus" route="pt_bus_5:4" begin="165.0" end="3765.0" period="600" line="5:4" >
+        <param key="name" value="Purano Bus Park- Budhanilkantha"/>
+        <param key="completeness" value="0.09"/>
+    </flow>
+    <flow id="pt_bus_7:0" type="pt_bus" route="pt_bus_7:0" begin="253.0" end="3853.0" period="600" line="7:0" >
+        <param key="name" value="Bagbazaar-Kamalbinayak"/>
+        <param key="completeness" value="0.05"/>
+    </flow>
+    <flow id="pt_bus_11:0" type="pt_bus" route="pt_bus_11:0" begin="303.0" end="3903.0" period="600" line="11:0" >
+        <param key="name" value="Ratnapark - Panauti"/>
+        <param key="completeness" value="0.04"/>
+    </flow>
+</routes>

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-01-10 20:48:52.699082 by Eclipse SUMO $Id: ptlines2flows.py v1_3_1+0313-ccb31df3eb jakob.erdmann@dlr.de 2019-09-02 13:26:32 +0200 $ v1_25_0+0000-ac6c5a6752d
+<configuration>
+    <net-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\osm.net.xml.gz"/>
+    <ptlines-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\osm_ptlines.xml"/>
+    <ptstops-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\osm_stops.add.xml"/>
+    <output-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\osm_pt.rou.xml"/>
+    <stopinfos-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\stopinfos.xml"/>
+    <routes-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\vehroutes.xml"/>
+    <trips-file value="C:\Users\donsa\Sumo\2026-01-10-20-48-35\trips.trips.xml"/>
+    <min-stops value="0"/>
+    <extend-to-fringe value="True"/>
+    <random-begin value="True"/>
+    <seed value="42"/>
+    <ignore-errors value="True"/>
+    <vtype-prefix value="pt_"/>
+    <verbose value="True"/>
+</configuration>
+-->
+
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="pt_bus" vClass="bus" speedFactor="0.95"/>
+    <vType id="pt_tram" vClass="tram" speedFactor="1.0"/>
+    <vType id="pt_train" vClass="rail"/>
+    <vType id="pt_subway" vClass="subway"/>
+    <vType id="pt_light_rail" vClass="rail_urban"/>
+    <vType id="pt_monorail" vClass="rail_urban"/>
+    <vType id="pt_trolleybus" vClass="bus" speedFactor="0.95"/>
+    <vType id="pt_minibus" vClass="bus" speedFactor="0.95"/>
+    <vType id="pt_share_taxi" vClass="taxi" speedFactor="0.95"/>
+    <vType id="pt_aerialway" vClass="cable_car" length="2.5" width="2" personCapacity="4"/>
+    <vType id="pt_ferry" vClass="ship"/>
+    <trip id="0_bus_2:0" type="pt_bus" depart="15.0" departLane="best" from="4840264#0" to="-229195912#0">
+        <stop busStop="-1281218814" duration="30"/>  <!-- Ratopul -->
+        <stop busStop="1490234323" duration="30"/>  <!-- Ciy Center Stop -->
+        <stop busStop="1279198122" duration="30"/>  <!-- Krishna Pauroti Stop -->
+    </trip>
+    <trip id="1_bus_5:0" type="pt_bus" depart="15.0" departLane="best" from="-693606876" to="-224839048#0">
+        <stop busStop="-943246313" duration="30"/>  <!-- Ratna Park -->
+        <stop busStop="-1806066068" duration="30"/>  <!-- Kantipath -->
+    </trip>
+    <trip id="2_bus_5:1" type="pt_bus" depart="17.0" departLane="best" from="171203194#0" to="171603744#1">
+        <stop busStop="1274184084" duration="30"/>  <!-- Purano Bus Park -->
+    </trip>
+    <trip id="3_bus_5:2" type="pt_bus" depart="52.0" departLane="best" from="-351926855#3" to="-224839048#0">
+        <stop busStop="-1806066068" duration="30"/>  <!-- Kantipath -->
+    </trip>
+    <trip id="4_bus_Nepal_Yatayat:0" type="pt_bus" depart="119.0" departLane="best" from="232095621" to="172387586#2">
+        <stop busStop="31148993" duration="30"/>  <!-- None -->
+    </trip>
+    <trip id="5_bus_26:0" type="pt_bus" depart="131.0" departLane="best" from="172129845" to="-224839048#0">
+        <stop busStop="-296319786" duration="30"/>  <!-- None -->
+        <stop busStop="31232256" duration="30"/>  <!-- Bir Hospital -->
+        <stop busStop="-1806066068" duration="30"/>  <!-- Kantipath -->
+    </trip>
+    <trip id="6_bus_5:3" type="pt_bus" depart="133.0" departLane="best" from="224839048#0" to="-693606876">
+        <stop busStop="1806066068" duration="30"/>  <!-- Kantipath -->
+        <stop busStop="-943246313" duration="30"/>  <!-- Ratna Park -->
+    </trip>
+    <trip id="7_bus_5:4" type="pt_bus" depart="165.0" departLane="best" from="351926855#0" to="171603744#1">
+        <stop busStop="1274184084" duration="30"/>  <!-- Purano Bus Park -->
+    </trip>
+    <trip id="8_bus_7:0" type="pt_bus" depart="253.0" departLane="best" from="351926855#2" to="351926855#2">
+        <stop busStop="1274184084" duration="30"/>  <!-- Purano Bus Park -->
+    </trip>
+    <trip id="9_bus_11:0" type="pt_bus" depart="303.0" departLane="best" from="171203194#0" to="171603744#1">
+        <stop busStop="1274184084" duration="30"/>  <!-- Purano Bus Park -->
+    </trip>
+    <trip id="10_bus_Chyamasingh_to_Ratnapark:0" type="pt_bus" depart="326.0" departLane="best" from="172129845" to="351926855#3">
+        <stop busStop="2396022575" duration="30"/>  <!-- NAC stop -->
+        <stop busStop="31232256" duration="30"/>  <!-- Bir Hospital -->
+        <stop busStop="943246313" duration="30"/>  <!-- Ratna Park -->
+    </trip>
+    <trip id="11_bus_12:0" type="pt_bus" depart="383.0" departLane="best" from="171203194#0" to="171603744#1">
+        <stop busStop="1274184084" duration="30"/>  <!-- Purano Bus Park -->
+    </trip>
+    <trip id="12_bus_Changu-Ratnapark:0" type="pt_bus" depart="389.0" departLane="best" from="1126610601" to="257759242#9">
+        <stop busStop="2291478689" duration="30"/>  <!-- Putalisadak Stop -->
+    </trip>
+    <trip id="13_bus_Gothatar-Purano_Buspark:0" type="pt_bus" depart="406.0" departLane="best" from="171203194#0" to="-232104796">
+        <stop busStop="31148727" duration="30"/>  <!-- None -->
+        <stop busStop="-1281218812" duration="30"/>  <!-- Maiti Devi chowk -->
+        <stop busStop="31148719" duration="30"/>  <!-- Dillibazaar stop -->
+        <stop busStop="-31150643" duration="30"/>  <!-- Purano Baneshwar -->
+    </trip>
+    <trip id="14_bus_Lagankhel_-_Naya_Buspark_(sajha):0" type="pt_bus" depart="441.0" departLane="best" from="172129845" to="-224839048#0">
+        <stop busStop="1803547435" duration="30"/>  <!-- None -->
+    </trip>
+    <trip id="15_bus_Nepal_Yatayat:1" type="pt_bus" depart="535.0" departLane="best" from="-28598645" to="-229195912#0">
+        <stop busStop="-31148993" duration="30"/>  <!-- None -->
+    </trip>
+</routes>

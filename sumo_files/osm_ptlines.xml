@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-01-10T20:48:47.912186+05:45 by Eclipse SUMO netconvert 1.25.0
+<netconvertConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/netconvertConfiguration.xsd">
+
+    <input>
+        <type-files value="${SUMO_HOME}\data\typemap\osmNetconvert.typ.xml,${SUMO_HOME}\data\typemap\osmNetconvertUrbanDe.typ.xml,${SUMO_HOME}\data\typemap\osmNetconvertPedestrians.typ.xml,${SUMO_HOME}\data\typemap\osmNetconvertBicycle.typ.xml,${SUMO_HOME}\data\typemap\osmNetconvertAerialway.typ.xml"/>
+        <osm-files value="osm_bbox.osm.xml.gz"/>
+    </input>
+
+    <output>
+        <output-file value="osm.net.xml.gz"/>
+        <output.street-names value="true"/>
+        <output.original-names value="true"/>
+        <ptstop-output value="osm_stops.add.xml"/>
+        <ptline-output value="osm_ptlines.xml"/>
+        <ptline-clean-up value="true"/>
+    </output>
+
+    <projection>
+        <proj.utm value="true"/>
+    </projection>
+
+    <processing>
+        <geometry.remove value="true"/>
+        <lefthand value="true"/>
+    </processing>
+
+    <tls_building>
+        <tls.discard-simple value="true"/>
+        <tls.join value="true"/>
+        <tls.guess-signals value="true"/>
+        <tls.default-type value="actuated"/>
+    </tls_building>
+
+    <ramp_guessing>
+        <ramps.guess value="true"/>
+    </ramp_guessing>
+
+    <junctions>
+        <junctions.join value="true"/>
+    </junctions>
+
+    <pedestrian>
+        <crossings.guess value="true"/>
+    </pedestrian>
+
+    <railway>
+        <railway.topology.repair value="true"/>
+    </railway>
+
+    <formats>
+        <osm.bike-access value="true"/>
+        <osm.sidewalks value="true"/>
+    </formats>
+
+</netconvertConfiguration>
+-->
+
+<ptLines xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/ptlines_file.xsd">
+    <ptLine id="2282101" name="Ratna Park - Sundarijal" line="2" type="bus" vClass="bus" completeness="0.33" missingBefore="3" missingAfter="2">
+        <route edges="4840264#0 4840264#1 4840264#2 4840264#3 4840264#4 4840264#5 173980141 111965835 -120430418#7 -120430418#6 -120430418#5 -120430418#3 -120430418#2 -120430418#1 -120430418#0 -279756910#1 -279756910#0 -232516700 -61164307#10 -61164307#9 -61164307#8 -61164307#7 -61164307#5 -61164307#4 -61164307#2 -61164307#1 -61164307#0 301607092 -232661480#6 -232661480#5 -232661480#3 -232661480#2 -232661480#1 -232661480#0 120031048 -171215514 -4840054#1 -4840054#0 -229195912#0 -225426576#1 -225426576#0 -232348159#0 -232348158#2 -232348158#1 -232348158#0 -351926855#3 -351926855#2 -351926855#1 -351926855#0"/>
+        <busStop id="-1281218814" name="Ratopul"/>
+        <busStop id="1490234323" name="Ciy Center Stop"/>
+        <busStop id="1279198122" name="Krishna Pauroti Stop"/>
+    </ptLine>
+    <ptLine id="2295734" name="Ratna Park-Budhanilkantha School" line="5" type="bus" vClass="bus" completeness="0.18" missingAfter="9">
+        <route edges="-693606876 4825630#0 4825630#1 672194957 -28543722#1 -28543722#0 -172387565#3 -172387565#2 -172387565#1 -172387565#0 753805285 172387589#0 172387589#1 172387589#3 -224839048#1 -224839048#0"/>
+        <busStop id="-943246313" name="Ratna Park"/>
+        <busStop id="-1806066068" name="Kantipath"/>
+    </ptLine>
+    <ptLine id="2301205" name="Purano Bus Park-Shivapuri" line="5" type="bus" vClass="bus" completeness="0.08" missingAfter="11">
+        <route edges="171203194#0 171203194#1 351926855#0 351926855#1 351926855#2 351926855#3 171603744#0 171603744#1 172129845 231194709 172387593#0 172387593#1 172387593#2 172387597#0 172387597#1 172387590#1 172387590#2 172387581 4825630#0 4825630#1 672194957 -28543722#1 -28543722#0 -172387565#3 -172387565#2 -172387565#1 -172387565#0 753805285 172387589#0 172387589#1 172387589#3 -224839048#1 -224839048#0"/>
+        <busStop id="1274184084" name="Purano Bus Park"/>
+    </ptLine>
+    <ptLine id="2301206" name="Shivapuri-Purano Bus Park" line="5" type="bus" vClass="bus" completeness="0.08" missingBefore="1" missingAfter="11">
+        <route edges="-351926855#3 -351926855#2 -351926855#1 -351926855#0 -171215507 -28579443 -176144614#2 -176144614#1 -176144614#0 -4840092 -28543722#1 -28543722#0 -172387565#3 -172387565#2 -172387565#1 -172387565#0 753805285 172387589#0 172387589#1 172387589#3 -224839048#1 -224839048#0"/>
+        <busStop id="-1806066068" name="Kantipath"/>
+    </ptLine>
+    <ptLine id="2301306" name="Balkumari-Gopi Krishna" line="Nepal Yatayat" type="bus" vClass="bus" completeness="0.08" missingAfter="12">
+        <route edges="232095621 696973898#0 696973898#1 671888452 229195912#0 4840054#0 4840054#1 171215514 172385216#0 172385216#1 -4840288#1 -4840288#0 28598634 172387586#0 172387586#1 172387586#2"/>
+        <busStop id="31148993" name=""/>
+    </ptLine>
+    <ptLine id="2301342" name="Purano Bus Park- Patan Dhoka" line="26" type="bus" vClass="bus" completeness="0.14" missingBefore="8" missingAfter="10">
+        <route edges="172129845 231194709 172387593#0 172387593#1 172387593#2 172387597#0 172387597#1 172387590#1 172387590#2 172387581 4825630#0 4825630#1 672194957 -28543722#1 -28543722#0 -172387565#3 -172387565#2 -172387565#1 -172387565#0 753805285 172387589#0 172387589#1 172387589#3 -224839048#1 -224839048#0 -28598645 172387591#0 172387591#1 172387591#2 172387591#3 172387579#0 172387579#1 172387579#2 172387579#3 172387579#4 172387579#5 80915805#0 80915805#1 224839047"/>
+        <busStop id="-296319786" name=""/>
+        <busStop id="31232256" name="Bir Hospital"/>
+        <busStop id="-1806066068" name="Kantipath"/>
+    </ptLine>
+    <ptLine id="2323381" name="Budhanilkantha School- Ratna Park" line="5" type="bus" vClass="bus" completeness="0.18" missingBefore="9">
+        <route edges="224839048#0 224839048#1 -172387589#3 -172387589#1 -172387589#0 -753805285 172387565#0 172387565#1 172387565#2 172387565#3 28543722#0 28543722#1 231885504 4840092 176144614#0 176144614#1 176144614#2 169442474 28579443"/>
+        <busStop id="1806066068" name="Kantipath"/>
+        <busStop id="-943246313" name="Ratna Park"/>
+    </ptLine>
+    <ptLine id="2988810" name="Purano Bus Park- Budhanilkantha" line="5" type="bus" vClass="bus" completeness="0.09" missingAfter="10">
+        <route edges="351926855#0 351926855#1 351926855#2 351926855#3 171603744#0 171603744#1 172129845 231194709 172387593#0 172387593#1 172387593#2 172387597#0 172387597#1 172387590#1 172387590#2 172387581 4825630#0 4825630#1 672194957 -28543722#1 -28543722#0 -172387565#3 -172387565#2 -172387565#1 -172387565#0 753805285 172387589#0 172387589#1 172387589#3 -224839048#1 -224839048#0"/>
+        <busStop id="1274184084" name="Purano Bus Park"/>
+    </ptLine>
+    <ptLine id="2988890" name="Bagbazaar-Kamalbinayak" line="7" type="bus" vClass="bus" completeness="0.05" missingBefore="18">
+        <busStop id="1274184084" name="Purano Bus Park"/>
+    </ptLine>
+    <ptLine id="2988891" name="Ratnapark - Panauti" line="11" type="bus" vClass="bus" completeness="0.04" missingBefore="23">
+        <route edges="171203194#0 171203194#1 351926855#0 351926855#1 351926855#2 351926855#3 171603744#0 171603744#1"/>
+        <busStop id="1274184084" name="Purano Bus Park"/>
+    </ptLine>
+    <ptLine id="2988983" name="Chyamasingh to Ratnapark" line="Chyamasingh to Ratnapark" type="bus" vClass="bus" completeness="0.10" missingBefore="27" missingAfter="1">
+        <route edges="172129845 231194709 172387593#0 172387593#1 172387593#2 172387597#0 172387597#1 172387590#1 172387590#2 172387581 693606876 171603746 171203194#0 171203194#1 351926855#0 351926855#1 351926855#2 351926855#3"/>
+        <busStop id="2396022575" name="NAC stop"/>
+        <busStop id="31232256" name="Bir Hospital"/>
+        <busStop id="943246313" name="Ratna Park"/>
+    </ptLine>
+    <ptLine id="2988993" name="Ratnapark - Dhulikhel" line="12" type="bus" vClass="bus" completeness="0.04" missingBefore="25">
+        <route edges="171203194#0 171203194#1 351926855#0 351926855#1 351926855#2 351926855#3 171603744#0 171603744#1"/>
+        <busStop id="1274184084" name="Purano Bus Park"/>
+    </ptLine>
+    <ptLine id="2989027" name="Changu-Ratnapark" line="Changu-Ratnapark" type="bus" vClass="bus" completeness="0.05" missingBefore="20" missingAfter="1">
+        <route edges="1126610601 231414548 257759242#0 257759242#2 257759242#3 257759242#4 257759242#5 257759242#6 257759242#7 257759242#8 257759242#9"/>
+        <busStop id="2291478689" name="Putalisadak Stop"/>
+    </ptLine>
+    <ptLine id="3020174" name="Gothatar-Purano Buspark" line="Gothatar-Purano Buspark" type="bus" vClass="bus" completeness="0.40" missingBefore="1" missingAfter="5">
+        <route edges="171203194#0 171203194#1 351926855#0 351926855#1 351926855#2 351926855#3 -171215507 -28579443 -550489466#1 -550489466#0 325666723#0 325666723#1 325666723#2 325666723#3 325666723#4 325666723#5 325666723#6 4840073#0 4840073#1 4840073#2 4840073#3 4840073#5 -4840054#1 -4840054#0 -229195912#0 171227893 -231414549#5 -231414549#4 -231414549#3 -231414549#2 -231414549#1 -231414549#0 -111965821#5 -111965821#4 -111965821#3 -111965821#2 -111965821#1 -111965821#0 -111965837 -121782640#7 -121782640#6 -121782640#4 -121782640#3 -121782640#1 -121782640#0 -232104796"/>
+        <busStop id="31148727" name=""/>
+        <busStop id="-1281218812" name="Maiti Devi chowk"/>
+        <busStop id="31148719" name="Dillibazaar stop"/>
+        <busStop id="-31150643" name="Purano Baneshwar"/>
+    </ptLine>
+    <ptLine id="3138552" name="Lagankhel - Naya Buspark (sajha)" line="Lagankhel - Naya Buspark (sajha)" type="bus" vClass="bus" completeness="0.08" missingBefore="4" missingAfter="8">
+        <route edges="172129845 231194709 172387593#0 172387593#1 172387593#2 169191890 172387590#1 172387590#2 172387581 4825630#0 4825630#1 672194957 -28543722#1 -28543722#0 -172387565#3 -172387565#2 -172387565#1 -172387565#0 753805285 172387589#0 172387589#1 172387589#3 -224839048#1 -224839048#0"/>
+        <busStop id="1803547435" name=""/>
+    </ptLine>
+    <ptLine id="3468819" name="Gopi Krishna-Balkumari" line="Nepal Yatayat" type="bus" vClass="bus" completeness="0.08" missingAfter="12">
+        <route edges="-28598645 -172385223#1 -172385223#0 -174884532#2 -174884532#0 80915805#0 80915805#1 224839047 195254871#0 195254871#1 195254871#2 195254871#3 -172385216#1 -172385216#0 -171215514 -4840054#1 -4840054#0 -229195912#0 171227893 169336486#0 169336486#1 169336486#2 169336486#3 169336486#4 232095621 696973898#0 696973898#1"/>
+        <busStop id="-31148993" name=""/>
+    </ptLine>
+</ptLines>
