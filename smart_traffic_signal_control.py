@@ -113,17 +113,19 @@ def configuration(dataclass):
         state_dim: int = 12  # Queue lengths (4) + waiting times (4) + current phase (4)
         action_dim: int = 4  # 4 possible signal phases
 
-        # PPO Hyperparameters (simplified)
-        gamma: float = 0.95  # Lower discount factor (focus on immediate queue clearing)
+        # PPO Hyperparameters (Optimized)
+        gamma: float = 0.99  # Increased discount factor for long-term planning
         gae_lambda: float = 0.95  # GAE lambda
         clip_epsilon: float = 0.2  # PPO clipping
         entropy_coef: float = 0.01  # Exploration
         value_coef: float = 0.5  # Value loss coefficient
         max_grad_norm: float = 0.5  # Gradient clipping
-        learning_rate: float = 1e-3  # Standard learning rate
-        batch_size: int = 64  # Standard batch size
-        n_epochs: int = 4  # Standard epochs
-        update_interval: int = 512  # More collected data before update
+        learning_rate: float = 1e-3  # Standard learning rate (kept high for DQN)
+        ppo_learning_rate: float = 3e-4  # Optimized lower learning rate for PPO
+        batch_size: int = 128  # Larger batch size
+        n_epochs: int = 10  # More epochs per update to juice data
+        update_interval: int = 512  # Standard update interval
+        ppo_update_interval: int = 2048  # Optimized interval for PPO (fixed steps)
 
         # Training settings
         num_episodes: int = 100  # Training episodes (reduced for faster iteration)
@@ -141,9 +143,6 @@ def configuration(dataclass):
         epsilon_end: float = 0.01
         epsilon_decay: float = 0.985  # Tuned for 100 episodes (~300 decay steps)
         target_update_freq: int = 100  # Less frequent for stability
-
-        # Optimizer settings
-        optimizer_name: str = "Adam"
 
     config = Config()
     print("Configuration loaded:")
@@ -575,37 +574,6 @@ def max_pressure_controller_class(np):
 
 
 @app.cell
-def mlp_baseline_class(nn):
-    """MLPBaseline - Supervised Learning Model"""
-    class MLPBaseline(nn.Module):
-        """
-        Supervised MLP for traffic signal control.
-        Trained on historical data to predict queue lengths and optimal actions.
-        """
-
-        def __init__(self, input_dim, hidden_dim, output_dim):
-            super(MLPBaseline, self).__init__()
-
-            self.network = nn.Sequential(
-                nn.Linear(input_dim, hidden_dim),
-                nn.ReLU(),
-                nn.BatchNorm1d(hidden_dim),
-                nn.Dropout(0.2),
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.ReLU(),
-                nn.BatchNorm1d(hidden_dim),
-                nn.Dropout(0.2),
-                nn.Linear(hidden_dim, output_dim),
-            )
-
-        def forward(self, x):
-            return self.network(x)
-
-    print("MLPBaseline class defined")
-    return (MLPBaseline,)
-
-
-@app.cell
 def mlp_action_predictor_class(device, nn, np, torch):
     """MLPActionPredictor - Action Prediction Network"""
     class MLPActionPredictor(nn.Module):
@@ -675,100 +643,31 @@ def ppo_header(mo):
 
 
 @app.cell
-def actor_network_class(nn, np, torch):
-    """Actor Network - outputs action probabilities"""
-    class ActorNetwork(nn.Module):
-        """
-        Actor network for PPO.
-        Outputs action probabilities using softmax.
-        """
-
-        def __init__(self, state_dim, hidden_dim, action_dim):
-            super(ActorNetwork, self).__init__()
-
-            self.network = nn.Sequential(
-                nn.Linear(state_dim, hidden_dim),
-                nn.Tanh(),
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.Tanh(),
-                nn.Linear(hidden_dim, action_dim),
-            )
-            self._init_weights()
-
-        def _init_weights(self):
-            for m in self.modules():
-                if isinstance(m, nn.Linear):
-                    nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
-                    nn.init.constant_(m.bias, 0.0)
-
-        def forward(self, state):
-            logits = self.network(state)
-            return logits
-
-        def get_action_probs(self, state):
-            logits = self.forward(state)
-            probs = torch.softmax(logits, dim=-1)
-            return probs
-
-    print("ActorNetwork class defined")
-    return (ActorNetwork,)
-
-
-@app.cell
-def critic_network_class(nn, np):
-    """Critic Network - estimates state value V(s)"""
-    class CriticNetwork(nn.Module):
-        """
-        Critic network for PPO.
-        Estimates state value function V(s).
-        """
-
-        def __init__(self, state_dim, hidden_dim):
-            super(CriticNetwork, self).__init__()
-
-            self.network = nn.Sequential(
-                nn.Linear(state_dim, hidden_dim),
-                nn.Tanh(),
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.Tanh(),
-                nn.Linear(hidden_dim, 1),
-            )
-            self._init_weights()
-
-        def _init_weights(self):
-            for m in self.modules():
-                if isinstance(m, nn.Linear):
-                    nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
-                    nn.init.constant_(m.bias, 0.0)
-
-        def forward(self, state):
-            value = self.network(state)
-            return value
-
-    print("CriticNetwork class defined")
-    return (CriticNetwork,)
-
-
-@app.cell
 def actor_critic_class(device, nn, np, torch):
-    """Combined Actor-Critic Network for PPO"""
+    """Combined Actor-Critic Network for PPO (Decoupled Architectures)"""
     class ActorCritic(nn.Module):
-        """Combined Actor-Critic network for PPO."""
+        """Combined Actor-Critic network for PPO with decoupled actor and critic paths."""
 
         def __init__(self, state_dim, hidden_dim, action_dim):
             super(ActorCritic, self).__init__()
 
-            # Shared feature extractor
-            self.shared = nn.Sequential(
+            # Decoupled Actor Network
+            self.actor = nn.Sequential(
                 nn.Linear(state_dim, hidden_dim),
-                nn.Tanh(),
+                nn.ReLU(),
                 nn.Linear(hidden_dim, hidden_dim),
-                nn.Tanh(),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, action_dim)
             )
-            # Actor head
-            self.actor = nn.Linear(hidden_dim, action_dim)
-            # Critic head
-            self.critic = nn.Linear(hidden_dim, 1)
+
+            # Decoupled Critic Network
+            self.critic = nn.Sequential(
+                nn.Linear(state_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, 1)
+            )
             self._init_weights()
 
         def _init_weights(self):
@@ -778,9 +677,8 @@ def actor_critic_class(device, nn, np, torch):
                     nn.init.constant_(m.bias, 0.0)
 
         def forward(self, state):
-            features = self.shared(state)
-            action_logits = self.actor(features)
-            value = self.critic(features)
+            action_logits = self.actor(state)
+            value = self.critic(state)
             return action_logits, value
 
         def get_action(self, state, deterministic=False):
@@ -885,21 +783,24 @@ def ppo_agent_class(PPOMemory, device, np, optim, torch):
             if optimizer_class is None:
                 optimizer_class = optim.Adam
 
+            # Select learning rate (use specialized PPO rate if available)
+            lr = getattr(config, 'ppo_learning_rate', config.learning_rate)
+
             if optimizer_class == optim.Adam:
                 if 'eps' not in optimizer_kwargs:
                     optimizer_kwargs['eps'] = 1e-5
                 self.optimizer = optimizer_class(
-                    actor_critic.parameters(), lr=config.learning_rate, **optimizer_kwargs
+                    actor_critic.parameters(), lr=lr, **optimizer_kwargs
                 )
             elif optimizer_class == optim.SGD:
                 if 'momentum' not in optimizer_kwargs:
                     optimizer_kwargs['momentum'] = 0.9
                 self.optimizer = optimizer_class(
-                    actor_critic.parameters(), lr=config.learning_rate, **optimizer_kwargs
+                    actor_critic.parameters(), lr=lr, **optimizer_kwargs
                 )
             else:
                 self.optimizer = optimizer_class(
-                    actor_critic.parameters(), lr=config.learning_rate, **optimizer_kwargs
+                    actor_critic.parameters(), lr=lr, **optimizer_kwargs
                 )
 
             self.memory = PPOMemory()
@@ -1235,7 +1136,12 @@ def train_rl_function(device, np, torch):
 
         total_steps = 0
         best_reward = float('-inf')
+        
+        # Determine initial learning rate (respect model-specific preferences)
         initial_lr = config.learning_rate
+        if agent_type == 'PPO' and hasattr(config, 'ppo_learning_rate'):
+            initial_lr = config.ppo_learning_rate
+            
         train_losses = []
         lr_multiplier = 1.0
 
@@ -1266,8 +1172,20 @@ def train_rl_function(device, np, torch):
                 total_steps += 1
                 state = next_state
 
-                if agent_type in ['PPO', 'A2C']:
-                    mem_len = len(agent.memory.states) if hasattr(agent, 'memory') else len(agent.states)
+                if agent_type == 'PPO':
+                    mem_len = len(agent.memory.states)
+                    interval = getattr(config, 'ppo_update_interval', config.update_interval)
+                    
+                    # Update strictness: Collect fixed number of steps ignoring episode boundary
+                    if mem_len >= interval:
+                        with torch.no_grad():
+                            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
+                            _, next_value = agent.actor_critic(state_tensor)
+                            next_value = next_value.item()
+                        agent.update(next_value)
+
+                elif agent_type == 'A2C':
+                    mem_len = len(agent.states)
                     if total_steps % config.update_interval == 0 and mem_len >= config.batch_size:
                         with torch.no_grad():
                             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
@@ -1278,8 +1196,9 @@ def train_rl_function(device, np, torch):
                 if done:
                     break
 
-            if agent_type in ['PPO', 'A2C']:
-                mem_len = len(agent.memory.states) if hasattr(agent, 'memory') else len(agent.states)
+            # Handle end of episode updates (only for A2C, PPO ignores episode boundaries)
+            if agent_type == 'A2C':
+                mem_len = len(agent.states)
                 if mem_len > 0:
                     with torch.no_grad():
                         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
@@ -1307,6 +1226,7 @@ def train_rl_function(device, np, torch):
 
         policy_losses = getattr(agent, 'policy_losses', train_losses if agent_type == 'DQN' else [])
         value_losses = getattr(agent, 'value_losses', [])
+        entropy_losses = getattr(agent, 'entropy_losses', [])
 
         if hasattr(env, 'close'):
             env.close()
@@ -1318,6 +1238,7 @@ def train_rl_function(device, np, torch):
             "avg_waiting_times": avg_waiting_times,
             "policy_losses": policy_losses,
             "value_losses": value_losses,
+            "entropy_losses": entropy_losses,
             "losses": train_losses,
         }
 
@@ -1916,19 +1837,6 @@ def visualization_header(mo):
 
 
 @app.cell
-def create_visualizations(
-    all_eval_results,
-    experiment_results,
-    mlp_losses,
-    np,
-    plt,
-):
-    # Store figures for later use
-    figures = {}
-    return (figures,)
-
-
-@app.cell
 def fig1_training_rewards(experiment_results, np, plt):
     """Figure 1: Training Reward Curves for All RL Models"""
     fig1, ax1 = plt.subplots(figsize=(10, 6))
@@ -2165,63 +2073,99 @@ def fig9_waiting_time(all_eval_results, np, plt):
 
 
 @app.cell
-def fig10_ppo_detailed(experiment_results, np, plt):
-    """Figure 10: PPO Adam Detailed Training Analysis"""
-    fig10, axes = plt.subplots(2, 2, figsize=(12, 10))
+def fig10_ppo_rewards(experiment_results, np, plt):
+    """Figure 10: PPO Adam Episode Rewards"""
+    fig10, _ax = plt.subplots(figsize=(10, 6))
     
     _ppo_data = experiment_results.get("PPO_Adam", {})
     _rewards = _ppo_data.get("episode_rewards", [])
-    _queues = _ppo_data.get("avg_queue_lengths", [])
     
-    # Subplot 1: Raw rewards
-    axes[0, 0].plot(_rewards, alpha=0.5, color='blue', label='Raw')
+    _ax.plot(_rewards, alpha=0.5, color='blue', label='Raw')
     if len(_rewards) >= 10:
         _ma = np.convolve(_rewards, np.ones(10)/10, mode='valid')
-        axes[0, 0].plot(range(9, len(_rewards)), _ma, color='red', linewidth=2, label='MA-10')
-    axes[0, 0].set_xlabel("Episode")
-    axes[0, 0].set_ylabel("Reward")
-    axes[0, 0].set_title("(a) Episode Rewards")
-    axes[0, 0].legend()
-    axes[0, 0].grid(True, alpha=0.3)
+        _ax.plot(range(9, len(_rewards)), _ma, color='red', linewidth=2, label='MA-10')
     
-    # Subplot 2: Queue lengths
-    axes[0, 1].plot(_queues, alpha=0.5, color='green', label='Raw')
-    if len(_queues) >= 10:
-        _ma_q = np.convolve(_queues, np.ones(10)/10, mode='valid')
-        axes[0, 1].plot(range(9, len(_queues)), _ma_q, color='red', linewidth=2, label='MA-10')
-    axes[0, 1].set_xlabel("Episode")
-    axes[0, 1].set_ylabel("Queue Length")
-    axes[0, 1].set_title("(b) Average Queue Length")
-    axes[0, 1].legend()
-    axes[0, 1].grid(True, alpha=0.3)
+    _ax.set_xlabel("Episode", fontsize=12)
+    _ax.set_ylabel("Reward", fontsize=12)
+    _ax.set_title("Figure 10: PPO-Adam Episode Rewards", fontsize=14, fontweight='bold')
+    _ax.legend()
+    _ax.grid(True, alpha=0.3)
     
-    # Subplot 3: Reward histogram
-    axes[1, 0].hist(_rewards, bins=20, color='blue', alpha=0.7, edgecolor='black')
-    axes[1, 0].axvline(np.mean(_rewards), color='red', linestyle='--', label=f'Mean: {np.mean(_rewards):.1f}')
-    axes[1, 0].set_xlabel("Reward")
-    axes[1, 0].set_ylabel("Frequency")
-    axes[1, 0].set_title("(c) Reward Distribution")
-    axes[1, 0].legend()
-    axes[1, 0].grid(True, alpha=0.3)
-    
-    # Subplot 4: Cumulative reward
-    _cumulative = np.cumsum(_rewards)
-    axes[1, 1].plot(_cumulative, color='purple', linewidth=2)
-    axes[1, 1].set_xlabel("Episode")
-    axes[1, 1].set_ylabel("Cumulative Reward")
-    axes[1, 1].set_title("(d) Cumulative Reward")
-    axes[1, 1].grid(True, alpha=0.3)
-    
-    plt.suptitle("Figure 10: PPO-Adam Detailed Training Analysis", fontsize=14, fontweight='bold')
     plt.tight_layout()
     fig10
     return
 
 
 @app.cell
-def fig11_model_radar(all_eval_results, np, plt):
-    """Figure 11: Radar Chart - Model Performance Comparison"""
-    fig11, ax11 = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
+def fig11_ppo_queues(experiment_results, np, plt):
+    """Figure 11: PPO Adam Average Queue Length"""
+    fig11, _ax = plt.subplots(figsize=(10, 6))
+    
+    _ppo_data = experiment_results.get("PPO_Adam", {})
+    _queues = _ppo_data.get("avg_queue_lengths", [])
+    
+    _ax.plot(_queues, alpha=0.5, color='green', label='Raw')
+    if len(_queues) >= 10:
+        _ma_q = np.convolve(_queues, np.ones(10)/10, mode='valid')
+        _ax.plot(range(9, len(_queues)), _ma_q, color='red', linewidth=2, label='MA-10')
+    
+    _ax.set_xlabel("Episode", fontsize=12)
+    _ax.set_ylabel("Queue Length", fontsize=12)
+    _ax.set_title("Figure 11: PPO-Adam Average Queue Length", fontsize=14, fontweight='bold')
+    _ax.legend()
+    _ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    fig11
+    return
+
+
+@app.cell
+def fig12_ppo_reward_dist(experiment_results, np, plt):
+    """Figure 12: PPO Adam Reward Distribution"""
+    fig12, _ax = plt.subplots(figsize=(10, 6))
+    
+    _ppo_data = experiment_results.get("PPO_Adam", {})
+    _rewards = _ppo_data.get("episode_rewards", [])
+    
+    _ax.hist(_rewards, bins=20, color='blue', alpha=0.7, edgecolor='black')
+    _ax.axvline(np.mean(_rewards), color='red', linestyle='--', label=f'Mean: {np.mean(_rewards):.1f}')
+    
+    _ax.set_xlabel("Reward", fontsize=12)
+    _ax.set_ylabel("Frequency", fontsize=12)
+    _ax.set_title("Figure 12: PPO-Adam Reward Distribution", fontsize=14, fontweight='bold')
+    _ax.legend()
+    _ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    fig12
+    return
+
+
+@app.cell
+def fig13_ppo_cumulative(experiment_results, np, plt):
+    """Figure 13: PPO Adam Cumulative Reward"""
+    fig13, _ax = plt.subplots(figsize=(10, 6))
+    
+    _ppo_data = experiment_results.get("PPO_Adam", {})
+    _rewards = _ppo_data.get("episode_rewards", [])
+    _cumulative = np.cumsum(_rewards)
+    
+    _ax.plot(_cumulative, color='purple', linewidth=2)
+    _ax.set_xlabel("Episode", fontsize=12)
+    _ax.set_ylabel("Cumulative Reward", fontsize=12)
+    _ax.set_title("Figure 13: PPO-Adam Cumulative Reward", fontsize=14, fontweight='bold')
+    _ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    fig13
+    return
+
+
+@app.cell
+def fig14_model_radar(all_eval_results, np, plt):
+    """Figure 14: Radar Chart - Model Performance Comparison"""
+    fig14, ax14 = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
     
     # Select key models
     _models = ['Fixed-Time', 'Max Pressure', 'PPO_Adam', 'DQN_Adam', 'A2C_Adam']
@@ -2250,22 +2194,22 @@ def fig11_model_radar(all_eval_results, np, plt):
             _res["mean_throughput"] / _max_through
         ]
         _values += _values[:1]
-        ax11.plot(_angles, _values, 'o-', linewidth=2, label=_model, color=_colors[_idx])
-        ax11.fill(_angles, _values, alpha=0.1, color=_colors[_idx])
+        ax14.plot(_angles, _values, 'o-', linewidth=2, label=_model, color=_colors[_idx])
+        ax14.fill(_angles, _values, alpha=0.1, color=_colors[_idx])
     
-    ax11.set_xticks(_angles[:-1])
-    ax11.set_xticklabels(_categories, fontsize=11)
-    ax11.set_title("Figure 11: Model Performance Radar Chart", fontsize=14, fontweight='bold', pad=20)
-    ax11.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0))
+    ax14.set_xticks(_angles[:-1])
+    ax14.set_xticklabels(_categories, fontsize=11)
+    ax14.set_title("Figure 14: Model Performance Radar Chart", fontsize=14, fontweight='bold', pad=20)
+    ax14.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0))
     plt.tight_layout()
-    fig11
+    fig14
     return
 
 
 @app.cell
-def fig12_boxplot(experiment_results, plt):
-    """Figure 12: Box Plot of Episode Rewards"""
-    fig12, ax12 = plt.subplots(figsize=(10, 6))
+def fig15_boxplot(experiment_results, plt):
+    """Figure 15: Box Plot of Episode Rewards"""
+    fig15, ax15 = plt.subplots(figsize=(10, 6))
     
     _data = []
     _labels = []
@@ -2273,26 +2217,26 @@ def fig12_boxplot(experiment_results, plt):
         _data.append(_results["episode_rewards"])
         _labels.append(_name)
     
-    _bp = ax12.boxplot(_data, labels=_labels, patch_artist=True)
+    _bp = ax15.boxplot(_data, labels=_labels, patch_artist=True)
     
     _colors = ['blue', 'green', 'orange', 'red', 'purple']
     for _patch, _color in zip(_bp['boxes'], _colors[:len(_data)]):
         _patch.set_facecolor(_color)
         _patch.set_alpha(0.6)
     
-    ax12.set_ylabel("Episode Reward", fontsize=12)
-    ax12.set_title("Figure 12: Distribution of Episode Rewards", fontsize=14, fontweight='bold')
-    ax12.set_xticklabels(_labels, rotation=45, ha='right', fontsize=10)
-    ax12.grid(True, alpha=0.3, axis='y')
+    ax15.set_ylabel("Episode Reward", fontsize=12)
+    ax15.set_title("Figure 15: Distribution of Episode Rewards", fontsize=14, fontweight='bold')
+    ax15.set_xticklabels(_labels, rotation=45, ha='right', fontsize=10)
+    ax15.grid(True, alpha=0.3, axis='y')
     plt.tight_layout()
-    fig12
+    fig15
     return
 
 
 @app.cell
-def fig13_policy_loss(experiment_results, np, plt):
-    """Figure 13: Policy Loss Curves During Training"""
-    fig13, ax13 = plt.subplots(figsize=(10, 6))
+def fig16_policy_loss(experiment_results, np, plt):
+    """Figure 16: Policy Loss Curves During Training"""
+    fig16, ax16 = plt.subplots(figsize=(10, 6))
     
     _colors = {'PPO_Adam': 'blue', 'A2C_Adam': 'orange', 'PPO_SGD': 'red', 'PPO_RMSprop': 'purple'}
     
@@ -2301,26 +2245,26 @@ def fig13_policy_loss(experiment_results, np, plt):
         if len(_losses) > 0 and _name != 'DQN_Adam':  # DQN doesn't have policy loss
             if len(_losses) >= 5:
                 _ma = np.convolve(_losses, np.ones(5) / 5, mode="valid")
-                ax13.plot(_ma, label=_name, color=_colors.get(_name, 'gray'), 
+                ax16.plot(_ma, label=_name, color=_colors.get(_name, 'gray'), 
                          linewidth=2, alpha=0.8)
             else:
-                ax13.plot(_losses, label=_name, color=_colors.get(_name, 'gray'), 
+                ax16.plot(_losses, label=_name, color=_colors.get(_name, 'gray'), 
                          linewidth=2, alpha=0.8)
     
-    ax13.set_xlabel("Update Step", fontsize=12)
-    ax13.set_ylabel("Policy Loss (5-step MA)", fontsize=12)
-    ax13.set_title("Figure 13: Policy Loss During Training", fontsize=14, fontweight='bold')
-    ax13.legend(fontsize=10)
-    ax13.grid(True, alpha=0.3)
+    ax16.set_xlabel("Update Step", fontsize=12)
+    ax16.set_ylabel("Policy Loss (5-step MA)", fontsize=12)
+    ax16.set_title("Figure 16: Policy Loss During Training", fontsize=14, fontweight='bold')
+    ax16.legend(fontsize=10)
+    ax16.grid(True, alpha=0.3)
     plt.tight_layout()
-    fig13
+    fig16
     return
 
 
 @app.cell
-def fig14_value_loss(experiment_results, np, plt):
-    """Figure 14: Value Loss Curves During Training"""
-    fig14, ax14 = plt.subplots(figsize=(10, 6))
+def fig17_value_loss(experiment_results, np, plt):
+    """Figure 17: Value Loss Curves During Training"""
+    fig17, ax17 = plt.subplots(figsize=(10, 6))
     
     _colors = {'PPO_Adam': 'blue', 'A2C_Adam': 'orange', 'PPO_SGD': 'red', 'PPO_RMSprop': 'purple'}
     
@@ -2329,26 +2273,26 @@ def fig14_value_loss(experiment_results, np, plt):
         if len(_losses) > 0:
             if len(_losses) >= 5:
                 _ma = np.convolve(_losses, np.ones(5) / 5, mode="valid")
-                ax14.plot(_ma, label=_name, color=_colors.get(_name, 'gray'), 
+                ax17.plot(_ma, label=_name, color=_colors.get(_name, 'gray'), 
                          linewidth=2, alpha=0.8)
             else:
-                ax14.plot(_losses, label=_name, color=_colors.get(_name, 'gray'), 
+                ax17.plot(_losses, label=_name, color=_colors.get(_name, 'gray'), 
                          linewidth=2, alpha=0.8)
     
-    ax14.set_xlabel("Update Step", fontsize=12)
-    ax14.set_ylabel("Value Loss (5-step MA)", fontsize=12)
-    ax14.set_title("Figure 14: Value Loss During Training", fontsize=14, fontweight='bold')
-    ax14.legend(fontsize=10)
-    ax14.grid(True, alpha=0.3)
+    ax17.set_xlabel("Update Step", fontsize=12)
+    ax17.set_ylabel("Value Loss (5-step MA)", fontsize=12)
+    ax17.set_title("Figure 17: Value Loss During Training", fontsize=14, fontweight='bold')
+    ax17.legend(fontsize=10)
+    ax17.grid(True, alpha=0.3)
     plt.tight_layout()
-    fig14
+    fig17
     return
 
 
 @app.cell
-def fig15_episode_length(experiment_results, np, plt):
-    """Figure 15: Episode Length Over Training"""
-    fig15, ax15 = plt.subplots(figsize=(10, 6))
+def fig18_episode_length(experiment_results, np, plt):
+    """Figure 18: Episode Length Over Training"""
+    fig18, ax18 = plt.subplots(figsize=(10, 6))
     
     _colors = {'PPO_Adam': 'blue', 'DQN_Adam': 'green', 'A2C_Adam': 'orange',
               'PPO_SGD': 'red', 'PPO_RMSprop': 'purple'}
@@ -2358,26 +2302,54 @@ def fig15_episode_length(experiment_results, np, plt):
         if len(_lengths) > 0:
             if len(_lengths) >= 10:
                 _ma = np.convolve(_lengths, np.ones(10) / 10, mode="valid")
-                ax15.plot(_ma, label=_name, color=_colors.get(_name, 'gray'), 
+                ax18.plot(_ma, label=_name, color=_colors.get(_name, 'gray'), 
                          linewidth=2, alpha=0.8)
             else:
-                ax15.plot(_lengths, label=_name, color=_colors.get(_name, 'gray'), 
+                ax18.plot(_lengths, label=_name, color=_colors.get(_name, 'gray'), 
                          linewidth=2, alpha=0.8)
     
-    ax15.set_xlabel("Episode", fontsize=12)
-    ax15.set_ylabel("Episode Length (10-ep MA)", fontsize=12)
-    ax15.set_title("Figure 15: Episode Length During Training", fontsize=14, fontweight='bold')
-    ax15.legend(fontsize=10)
-    ax15.grid(True, alpha=0.3)
+    ax18.set_xlabel("Episode", fontsize=12)
+    ax18.set_ylabel("Episode Length (10-ep MA)", fontsize=12)
+    ax18.set_title("Figure 18: Episode Length During Training", fontsize=14, fontweight='bold')
+    ax18.legend(fontsize=10)
+    ax18.grid(True, alpha=0.3)
     plt.tight_layout()
-    fig15
+    fig18
     return
 
 
 @app.cell
-def fig16_lr_decay(config, np, plt):
-    """Figure 16: Learning Rate Decay Schedule"""
-    fig16, ax16 = plt.subplots(figsize=(8, 5))
+def fig19_entropy_loss(experiment_results, np, plt):
+    """Figure 19: Entropy Loss During Training"""
+    fig19, ax19 = plt.subplots(figsize=(10, 6))
+    
+    _colors = {'PPO_Adam': 'blue', 'A2C_Adam': 'orange', 'PPO_SGD': 'red', 'PPO_RMSprop': 'purple'}
+    
+    for _name, _results in experiment_results.items():
+        _losses = _results.get("entropy_losses", [])
+        if len(_losses) > 0:
+            if len(_losses) >= 5:
+                _ma = np.convolve(_losses, np.ones(5) / 5, mode="valid")
+                ax19.plot(_ma, label=_name, color=_colors.get(_name, 'gray'), 
+                         linewidth=2, alpha=0.8)
+            else:
+                ax19.plot(_losses, label=_name, color=_colors.get(_name, 'gray'), 
+                         linewidth=2, alpha=0.8)
+    
+    ax19.set_xlabel("Update Step", fontsize=12)
+    ax19.set_ylabel("Entropy Loss (5-step MA)", fontsize=12)
+    ax19.set_title("Figure 19: Entropy Loss (Exploration) During Training", fontsize=14, fontweight='bold')
+    ax19.legend(fontsize=10)
+    ax19.grid(True, alpha=0.3)
+    plt.tight_layout()
+    fig19
+    return
+
+
+@app.cell
+def fig20_lr_decay(config, np, plt):
+    """Figure 20: Learning Rate Decay Schedule"""
+    fig20, ax20 = plt.subplots(figsize=(8, 5))
     
     _episodes = np.arange(config.num_episodes)
     _initial_lr = config.learning_rate
@@ -2385,25 +2357,25 @@ def fig16_lr_decay(config, np, plt):
     # Linear decay schedule (matches the training loop)
     _lr_schedule = [max(0.1, 1.0 - ep / config.num_episodes) * _initial_lr for ep in _episodes]
     
-    ax16.plot(_episodes, _lr_schedule, color='blue', linewidth=2, label='Linear Decay')
-    ax16.axhline(y=_initial_lr, color='green', linestyle='--', alpha=0.5, label=f'Initial LR: {_initial_lr}')
-    ax16.axhline(y=_initial_lr * 0.1, color='red', linestyle='--', alpha=0.5, label=f'Min LR: {_initial_lr * 0.1}')
+    ax20.plot(_episodes, _lr_schedule, color='blue', linewidth=2, label='Linear Decay')
+    ax20.axhline(y=_initial_lr, color='green', linestyle='--', alpha=0.5, label=f'Initial LR: {_initial_lr}')
+    ax20.axhline(y=_initial_lr * 0.1, color='red', linestyle='--', alpha=0.5, label=f'Min LR: {_initial_lr * 0.1}')
     
-    ax16.set_xlabel("Episode", fontsize=12)
-    ax16.set_ylabel("Learning Rate", fontsize=12)
-    ax16.set_title("Figure 16: Learning Rate Decay Schedule", fontsize=14, fontweight='bold')
-    ax16.legend(fontsize=10)
-    ax16.grid(True, alpha=0.3)
-    ax16.set_ylim(0, _initial_lr * 1.1)
+    ax20.set_xlabel("Episode", fontsize=12)
+    ax20.set_ylabel("Learning Rate", fontsize=12)
+    ax20.set_title("Figure 20: Learning Rate Decay Schedule", fontsize=14, fontweight='bold')
+    ax20.legend(fontsize=10)
+    ax20.grid(True, alpha=0.3)
+    ax20.set_ylim(0, _initial_lr * 1.1)
     
     # Add annotations
-    ax16.annotate(f'Start: {_initial_lr:.4f}', xy=(0, _initial_lr), 
+    ax20.annotate(f'Start: {_initial_lr:.4f}', xy=(0, _initial_lr), 
                  xytext=(5, _initial_lr + 0.0001), fontsize=10)
-    ax16.annotate(f'End: {_lr_schedule[-1]:.5f}', xy=(config.num_episodes-1, _lr_schedule[-1]), 
+    ax20.annotate(f'End: {_lr_schedule[-1]:.5f}', xy=(config.num_episodes-1, _lr_schedule[-1]), 
                  xytext=(config.num_episodes-30, _lr_schedule[-1] + 0.0002), fontsize=10)
     
     plt.tight_layout()
-    fig16
+    fig20
     return
 
 
