@@ -148,6 +148,8 @@ def configuration(dataclass):
         
         # A2C Hyperparameters
         a2c_learning_rate: float = 7e-4
+    
+    config = Config()
     print(f"  - State dimension: {config.state_dim}")
     print(f"  - Action dimension: {config.action_dim}")
     print(f"  - PPO clip epsilon: {config.clip_epsilon}")
