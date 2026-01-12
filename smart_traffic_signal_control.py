@@ -29,6 +29,7 @@ def imports_cell(mo):
     mo.md("""
     ## 1. Setup and Imports
     """)
+    return
 
 
 @app.cell
@@ -113,39 +114,40 @@ def configuration(dataclass):
         state_dim: int = 12  # Queue lengths (4) + waiting times (4) + current phase (4)
         action_dim: int = 4  # 4 possible signal phases
 
-        # PPO Hyperparameters (Optimized)
-        gamma: float = 0.99  # Increased discount factor for long-term planning
-        gae_lambda: float = 0.95  # GAE lambda
-        clip_epsilon: float = 0.2  # PPO clipping
-        entropy_coef: float = 0.01  # Exploration
-        value_coef: float = 0.5  # Value loss coefficient
-        max_grad_norm: float = 0.5  # Gradient clipping
-        learning_rate: float = 1e-3  # Standard learning rate (kept high for DQN)
-        ppo_learning_rate: float = 3e-4  # Optimized lower learning rate for PPO
-        batch_size: int = 128  # Larger batch size
-        n_epochs: int = 10  # More epochs per update to juice data
-        update_interval: int = 512  # Standard update interval
-        ppo_update_interval: int = 2048  # Optimized interval for PPO (fixed steps)
+        # PPO Hyperparameters
+        gamma: float = 0.99
+        gae_lambda: float = 0.95
+        clip_epsilon: float = 0.2
+        entropy_coef: float = 0.05
+        value_coef: float = 0.5
+        max_grad_norm: float = 0.5
+        learning_rate: float = 1e-3
+        ppo_learning_rate: float = 3e-4
+        batch_size: int = 64
+        n_epochs: int = 10
+        update_interval: int = 512
+        ppo_update_interval: int = 256
 
         # Training settings
-        num_episodes: int = 100  # Training episodes (reduced for faster iteration)
-        eval_interval: int = 10  # Evaluation frequency
+        num_episodes: int = 150
+        eval_interval: int = 10
 
         # MLP Baseline settings
         mlp_hidden_dim: int = 128
-        mlp_epochs: int = 50  # Reduced for faster training
+        mlp_epochs: int = 50
         mlp_lr: float = 1e-3
 
         # DQN Hyperparameters
         buffer_size: int = 10000
         batch_size_dqn: int = 64
+        dqn_learning_rate: float = 5e-4
         epsilon_start: float = 1.0
         epsilon_end: float = 0.01
-        epsilon_decay: float = 0.985  # Tuned for 100 episodes (~300 decay steps)
-        target_update_freq: int = 100  # Less frequent for stability
-
-    config = Config()
-    print("Configuration loaded:")
+        epsilon_decay: float = 0.99
+        target_update_freq: int = 100
+        
+        # A2C Hyperparameters
+        a2c_learning_rate: float = 7e-4
     print(f"  - State dimension: {config.state_dim}")
     print(f"  - Action dimension: {config.action_dim}")
     print(f"  - PPO clip epsilon: {config.clip_epsilon}")
@@ -178,6 +180,12 @@ def traffic_environment(checkBinary, config, np, os, traci):
 
         Uses TraCI to interface with SUMO and control traffic lights.
 
+        Resource Management:
+        - Implements context manager protocol (__enter__/__exit__)
+        - Automatic cleanup in __del__ destructor
+        - Explicit close() method with exception handling
+        - All SUMO connections properly closed in finally blocks
+
         State Space:
         - Queue lengths for controlled lanes (4 values)
         - Average waiting time per lane (4 values)
@@ -185,6 +193,21 @@ def traffic_environment(checkBinary, config, np, os, traci):
 
         Action Space:
         - 0-N: Available traffic light phases
+
+        Usage:
+            # Recommended: Use as context manager
+            with SUMOTrafficEnv(config) as env:
+                state = env.reset()
+                # ... training loop ...
+            # Environment automatically closed
+
+            # Or manual management:
+            env = SUMOTrafficEnv(config)
+            try:
+                state = env.reset()
+                # ... training loop ...
+            finally:
+                env.close()
         """
 
         def __init__(self, config, gui=False, sumo_cfg_path=None):
@@ -192,8 +215,7 @@ def traffic_environment(checkBinary, config, np, os, traci):
             self.gui = gui
             self.max_steps = config.max_steps_per_episode
 
-            # SUMO configuration - use absolute path
-            # For marimo notebooks, we need to use the current working directory
+            # SUMO configuration
             if sumo_cfg_path:
                 self.sumo_cfg = sumo_cfg_path
             else:
@@ -231,13 +253,15 @@ def traffic_environment(checkBinary, config, np, os, traci):
             self.max_vehicles = config.max_vehicles_per_lane
 
         def _start_sumo(self):
-            """Start SUMO simulation"""
+            """Start SUMO simulation with proper cleanup"""
+            # Clean up any existing connection first
             if self.sumo_running:
                 try:
                     traci.close()
                 except Exception:
                     pass
-                self.sumo_running = False
+                finally:
+                    self.sumo_running = False
 
             sumo_binary = checkBinary("sumo-gui" if self.gui else "sumo")
 
@@ -267,7 +291,6 @@ def traffic_environment(checkBinary, config, np, os, traci):
             # Get traffic light IDs
             self.tl_ids = list(traci.trafficlight.getIDList())
             if self.tl_ids:
-                # Use first traffic light or one with most phases
                 self.controlled_tl = self._select_main_intersection()
                 self._setup_controlled_lanes()
                 self._setup_phases()
@@ -384,7 +407,6 @@ def traffic_environment(checkBinary, config, np, os, traci):
             """Set traffic light phase"""
             if self.controlled_tl:
                 try:
-                    # Ensure action is within valid range
                     action = int(action) % self.num_phases
                     traci.trafficlight.setPhase(self.controlled_tl, action)
                     self.current_phase = action
@@ -393,25 +415,29 @@ def traffic_environment(checkBinary, config, np, os, traci):
 
         def _compute_reward(self, old_queues, new_queues, old_waiting, new_waiting):
             """Compute reward based on traffic metrics"""
-            # Reward for reducing queue lengths
-            queue_reduction = np.sum(old_queues) - np.sum(new_queues)
-
-            # Penalty for waiting time
-            waiting_penalty = np.sum(new_waiting) / 100.0
-
-            # Throughput reward (vehicles that left the network)
+            # Throughput reward
             try:
                 arrived = traci.simulation.getArrivedNumber()
                 self.total_throughput += arrived
             except Exception:
                 arrived = 0
 
-            # Combined reward
-            reward = queue_reduction * 0.5 + arrived * 1.0 - waiting_penalty * 0.1
+            throughput_reward = arrived * 2.0
 
-            # Pressure-based component (negative pressure)
-            pressure = np.sum(new_queues)
-            reward -= pressure * 0.05
+            # Queue reduction
+            queue_change = np.sum(old_queues) - np.sum(new_queues)
+            queue_reward = np.clip(queue_change, -5, 5) * 0.3
+
+            # Queue pressure penalty
+            total_queue = np.sum(new_queues)
+            queue_penalty = -np.clip(total_queue / (self.num_lanes * 5), 0, 1) * 0.5
+
+            # Waiting time penalty
+            avg_wait = np.mean(new_waiting)
+            wait_penalty = -np.clip(avg_wait / 60.0, 0, 2) * 0.3
+
+            # Combined reward
+            reward = throughput_reward + queue_reward + queue_penalty + wait_penalty
 
             return reward
 
@@ -426,7 +452,7 @@ def traffic_environment(checkBinary, config, np, os, traci):
             # Phase change penalty
             phase_change_penalty = 0
             if action != self.current_phase:
-                phase_change_penalty = 0.5  # Small penalty for switching
+                phase_change_penalty = 0.1
 
             # Set the new phase
             self._set_phase(action)
@@ -482,13 +508,32 @@ def traffic_environment(checkBinary, config, np, os, traci):
             }
 
         def close(self):
-            """Close the SUMO simulation"""
+            """Close the SUMO simulation with proper cleanup"""
             if self.sumo_running:
-                traci.close()
-                self.sumo_running = False
+                try:
+                    traci.close()
+                except Exception as e:
+                    print(f"Warning: Error closing SUMO connection: {e}")
+                finally:
+                    self.sumo_running = False
+
+        def __enter__(self):
+            """Context manager entry"""
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            """Context manager exit"""
+            try:
+                self.close()
+            except Exception:
+                pass
+            return False
 
         def __del__(self):
-            self.close()
+            try:
+                self.close()
+            except Exception:
+                pass
 
     TrafficIntersection = SUMOTrafficEnv
 
@@ -651,30 +696,36 @@ def actor_critic_class(device, nn, np, torch):
         def __init__(self, state_dim, hidden_dim, action_dim):
             super(ActorCritic, self).__init__()
 
-            # Decoupled Actor Network
+            # Decoupled Actor Network with Tanh activation (bounded, smoother gradients)
             self.actor = nn.Sequential(
                 nn.Linear(state_dim, hidden_dim),
-                nn.ReLU(),
+                nn.Tanh(),
                 nn.Linear(hidden_dim, hidden_dim),
-                nn.ReLU(),
+                nn.Tanh(),
                 nn.Linear(hidden_dim, action_dim)
             )
 
-            # Decoupled Critic Network
+            # Decoupled Critic Network with Tanh activation
             self.critic = nn.Sequential(
                 nn.Linear(state_dim, hidden_dim),
-                nn.ReLU(),
+                nn.Tanh(),
                 nn.Linear(hidden_dim, hidden_dim),
-                nn.ReLU(),
+                nn.Tanh(),
                 nn.Linear(hidden_dim, 1)
             )
             self._init_weights()
 
         def _init_weights(self):
-            for m in self.modules():
-                if isinstance(m, nn.Linear):
-                    nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
-                    nn.init.constant_(m.bias, 0.0)
+            # Standard orthogonal initialization for all layers
+            for module in [self.actor, self.critic]:
+                for i, m in enumerate(module):
+                    if isinstance(m, nn.Linear):
+                        # Last layer gets smaller initialization
+                        if i == len(list(module)) - 1:
+                            nn.init.orthogonal_(m.weight, gain=0.01)
+                        else:
+                            nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
+                        nn.init.constant_(m.bias, 0.0)
 
         def forward(self, state):
             action_logits = self.actor(state)
@@ -779,11 +830,9 @@ def ppo_agent_class(PPOMemory, device, np, optim, torch):
             self.actor_critic = actor_critic
             self.config = config
 
-            # Support different optimizers
             if optimizer_class is None:
                 optimizer_class = optim.Adam
 
-            # Select learning rate (use specialized PPO rate if available)
             lr = getattr(config, 'ppo_learning_rate', config.learning_rate)
 
             if optimizer_class == optim.Adam:
@@ -823,14 +872,10 @@ def ppo_agent_class(PPOMemory, device, np, optim, torch):
             values = values + [next_value]
 
             for t in reversed(range(len(rewards))):
-                if dones[t]:
-                    delta = rewards[t] - values[t]
-                    gae = delta
-                else:
-                    delta = (
-                        rewards[t] + self.config.gamma * values[t + 1] - values[t]
-                    )
-                    gae = delta + self.config.gamma * self.config.gae_lambda * gae
+                # Mask for episode boundary
+                mask = 0.0 if dones[t] else 1.0
+                delta = rewards[t] + self.config.gamma * values[t + 1] * mask - values[t]
+                gae = delta + self.config.gamma * self.config.gae_lambda * mask * gae
                 advantages.insert(0, gae)
 
             advantages = np.array(advantages)
@@ -852,6 +897,7 @@ def ppo_agent_class(PPOMemory, device, np, optim, torch):
             states = torch.FloatTensor(states).to(device)
             actions = torch.LongTensor(actions).to(device)
             old_log_probs = torch.FloatTensor(old_log_probs).to(device)
+            old_values = torch.FloatTensor(values).to(device)  # Store old values for clipping
             advantages = torch.FloatTensor(advantages).to(device)
             returns = torch.FloatTensor(returns).to(device)
 
@@ -865,6 +911,7 @@ def ppo_agent_class(PPOMemory, device, np, optim, torch):
                     batch_states = states[batch_indices]
                     batch_actions = actions[batch_indices]
                     batch_old_log_probs = old_log_probs[batch_indices]
+                    batch_old_values = old_values[batch_indices]
                     batch_advantages = advantages[batch_indices]
                     batch_returns = returns[batch_indices]
 
@@ -872,6 +919,7 @@ def ppo_agent_class(PPOMemory, device, np, optim, torch):
                         self.actor_critic.evaluate_actions(batch_states, batch_actions)
                     )
 
+                    # Policy loss with clipping
                     ratio = torch.exp(new_log_probs - batch_old_log_probs)
                     surr1 = ratio * batch_advantages
                     surr2 = (
@@ -880,10 +928,18 @@ def ppo_agent_class(PPOMemory, device, np, optim, torch):
                     )
                     policy_loss = -torch.min(surr1, surr2).mean()
 
-                    value_loss = (
-                        self.config.value_coef
-                        * (batch_returns - values_pred).pow(2).mean()
+                    # Value loss with clipping
+                    values_clipped = batch_old_values + torch.clamp(
+                        values_pred - batch_old_values,
+                        -self.config.clip_epsilon,
+                        self.config.clip_epsilon
                     )
+                    value_loss_unclipped = (batch_returns - values_pred).pow(2)
+                    value_loss_clipped = (batch_returns - values_clipped).pow(2)
+                    value_loss = self.config.value_coef * 0.5 * torch.max(
+                        value_loss_unclipped, value_loss_clipped
+                    ).mean()
+
                     entropy_loss = -self.config.entropy_coef * entropy.mean()
                     loss = policy_loss + value_loss + entropy_loss
 
@@ -960,7 +1016,7 @@ def q_network_class(nn):
 
 
 @app.cell
-def dqn_agent_class(QNetwork, ReplayBuffer, device, optim, random, torch):
+def dqn_agent_class(QNetwork, ReplayBuffer, device, nn, optim, random, torch):
     """DQNAgent - Deep Q-Network Agent"""
     class DQNAgent:
         """Deep Q-Network Agent for Traffic Signal Control"""
@@ -971,11 +1027,14 @@ def dqn_agent_class(QNetwork, ReplayBuffer, device, optim, random, torch):
             self.target_net.load_state_dict(self.q_net.state_dict())
             self.target_net.eval()
 
+            lr = getattr(config, 'dqn_learning_rate', config.learning_rate)
             if optimizer_class is None:
                 optimizer_class = optim.Adam
             self.optimizer = optimizer_class(
-                self.q_net.parameters(), lr=config.learning_rate, **optimizer_kwargs
+                self.q_net.parameters(), lr=lr, **optimizer_kwargs
             )
+
+            self.huber_loss = nn.SmoothL1Loss()  # Huber loss for stability
 
             self.memory = ReplayBuffer(config.buffer_size)
             self.steps = 0
@@ -1019,10 +1078,11 @@ def dqn_agent_class(QNetwork, ReplayBuffer, device, optim, random, torch):
                 next_q = self.target_net(next_states).max(1)[0]
                 expected_q = rewards + self.config.gamma * next_q * (1 - dones)
 
-            loss = (q_value - expected_q).pow(2).mean()
+            loss = self.huber_loss(q_value, expected_q)
 
             self.optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), self.config.max_grad_norm)
             self.optimizer.step()
 
             self.losses.append(loss.item())
@@ -1039,17 +1099,18 @@ def dqn_agent_class(QNetwork, ReplayBuffer, device, optim, random, torch):
 @app.cell
 def a2c_agent_class(device, np, optim, torch):
     """A2C Agent Implementation"""
-    
+
     class A2CAgent:
         """Advantage Actor-Critic Agent"""
         def __init__(self, actor_critic, config, optimizer_class=None, **optimizer_kwargs):
             self.actor_critic = actor_critic
             self.config = config
 
+            lr = getattr(config, 'a2c_learning_rate', config.learning_rate)
             if optimizer_class is None:
                 optimizer_class = optim.Adam
             self.optimizer = optimizer_class(
-                actor_critic.parameters(), lr=config.learning_rate, **optimizer_kwargs
+                actor_critic.parameters(), lr=lr, **optimizer_kwargs
             )
 
             self.states = []
@@ -1089,10 +1150,13 @@ def a2c_agent_class(device, np, optim, torch):
             log_probs, values, entropy = self.actor_critic.evaluate_actions(states, actions)
 
             advantage = returns - values
+            # Normalize advantages (same as PPO for fair comparison)
+            advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
+
             actor_loss = -(log_probs * advantage.detach()).mean()
-            critic_loss = advantage.pow(2).mean()
+            critic_loss = (returns - values).pow(2).mean()  # Use returns for critic loss
             entropy_loss = -self.config.entropy_coef * entropy.mean()
-            loss = actor_loss + 0.5 * critic_loss + entropy_loss
+            loss = actor_loss + self.config.value_coef * critic_loss + entropy_loss
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -1136,100 +1200,106 @@ def train_rl_function(device, np, torch):
 
         total_steps = 0
         best_reward = float('-inf')
-        
+
         # Determine initial learning rate (respect model-specific preferences)
         initial_lr = config.learning_rate
         if agent_type == 'PPO' and hasattr(config, 'ppo_learning_rate'):
             initial_lr = config.ppo_learning_rate
-            
+
         train_losses = []
         lr_multiplier = 1.0
 
-        for episode in range(config.num_episodes):
-            state = env.reset()
-            episode_reward = 0
-            episode_length = 0
+        try:
+            for episode in range(config.num_episodes):
+                state = env.reset()
+                episode_reward = 0
+                episode_length = 0
 
-            # Learning rate decay for ALL agents (fair comparison)
-            lr_multiplier = max(0.1, 1.0 - episode / config.num_episodes)
-            for param_group in agent.optimizer.param_groups:
-                param_group['lr'] = initial_lr * lr_multiplier
+                # Cosine annealing learning rate decay
+                progress = episode / config.num_episodes
+                lr_multiplier = 0.5 * (1 + np.cos(np.pi * progress))
+                lr_multiplier = max(0.1, lr_multiplier)
+                for param_group in agent.optimizer.param_groups:
+                    param_group['lr'] = initial_lr * lr_multiplier
 
-            for step in range(config.max_steps_per_episode):
-                action, log_prob, value = agent.select_action(state)
-                next_state, reward, done, info = env.step(action)
+                for step in range(config.max_steps_per_episode):
+                    action, log_prob, value = agent.select_action(state)
+                    next_state, reward, done, info = env.step(action)
 
-                if agent_type == 'DQN':
-                    agent.remember(state, action, reward, next_state, done)
-                    loss_dict = agent.update()
-                    if loss_dict:
-                        train_losses.append(loss_dict['loss'])
-                else:
-                    agent.store_transition(state, action, reward, value, log_prob, done)
+                    if agent_type == 'DQN':
+                        agent.remember(state, action, reward, next_state, done)
+                        loss_dict = agent.update()
+                        if loss_dict:
+                            train_losses.append(loss_dict['loss'])
+                    else:
+                        agent.store_transition(state, action, reward, value, log_prob, done)
 
-                episode_reward += reward
-                episode_length += 1
-                total_steps += 1
-                state = next_state
+                    episode_reward += reward
+                    episode_length += 1
+                    total_steps += 1
+                    state = next_state
 
-                if agent_type == 'PPO':
-                    mem_len = len(agent.memory.states)
-                    interval = getattr(config, 'ppo_update_interval', config.update_interval)
-                    
-                    # Update strictness: Collect fixed number of steps ignoring episode boundary
-                    if mem_len >= interval:
-                        with torch.no_grad():
-                            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
-                            _, next_value = agent.actor_critic(state_tensor)
-                            next_value = next_value.item()
-                        agent.update(next_value)
+                    if agent_type == 'PPO':
+                        mem_len = len(agent.memory.states)
+                        interval = getattr(config, 'ppo_update_interval', config.update_interval)
 
-                elif agent_type == 'A2C':
+                        # Update strictness: Collect fixed number of steps ignoring episode boundary
+                        if mem_len >= interval:
+                            with torch.no_grad():
+                                state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
+                                _, next_value = agent.actor_critic(state_tensor)
+                                next_value = next_value.item()
+                            agent.update(next_value)
+
+                    elif agent_type == 'A2C':
+                        mem_len = len(agent.states)
+                        if total_steps % config.update_interval == 0 and mem_len >= config.batch_size:
+                            with torch.no_grad():
+                                state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
+                                _, next_value = agent.actor_critic(state_tensor)
+                                next_value = next_value.item()
+                            agent.update(next_value)
+
+                    if done:
+                        break
+
+                if agent_type == 'A2C':
                     mem_len = len(agent.states)
-                    if total_steps % config.update_interval == 0 and mem_len >= config.batch_size:
+                    if mem_len > 0:
                         with torch.no_grad():
                             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
                             _, next_value = agent.actor_critic(state_tensor)
-                            next_value = next_value.item()
+                            next_value = next_value.item() if not done else 0
                         agent.update(next_value)
 
-                if done:
-                    break
+                metrics = env.get_metrics()
+                episode_rewards.append(episode_reward)
+                episode_lengths.append(episode_length)
+                avg_queue_lengths.append(metrics["avg_queue_length"])
+                avg_waiting_times.append(metrics["avg_waiting_time"])
 
-            # Handle end of episode updates (only for A2C, PPO ignores episode boundaries)
-            if agent_type == 'A2C':
-                mem_len = len(agent.states)
-                if mem_len > 0:
-                    with torch.no_grad():
-                        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
-                        _, next_value = agent.actor_critic(state_tensor)
-                        next_value = next_value.item() if not done else 0
-                    agent.update(next_value)
+                if episode_reward > best_reward:
+                    best_reward = episode_reward
 
-            metrics = env.get_metrics()
-            episode_rewards.append(episode_reward)
-            episode_lengths.append(episode_length)
-            avg_queue_lengths.append(metrics["avg_queue_length"])
-            avg_waiting_times.append(metrics["avg_waiting_time"])
+                if verbose and (episode + 1) % 5 == 0:
+                    recent_rewards = episode_rewards[-5:] if len(episode_rewards) >= 5 else episode_rewards
+                    elapsed_pct = (episode + 1) / config.num_episodes * 100
+                    print(
+                        f"[{elapsed_pct:5.1f}%] Episode {episode + 1}/{config.num_episodes} | "
+                        f"Reward: {episode_reward:.2f} | Avg(5): {np.mean(recent_rewards):.2f} | "
+                        f"Best: {best_reward:.2f} | Queue: {metrics['avg_queue_length']:.2f}"
+                    )
 
-            if episode_reward > best_reward:
-                best_reward = episode_reward
-
-            if verbose and (episode + 1) % 5 == 0:
-                recent_rewards = episode_rewards[-5:] if len(episode_rewards) >= 5 else episode_rewards
-                elapsed_pct = (episode + 1) / config.num_episodes * 100
-                print(
-                    f"[{elapsed_pct:5.1f}%] Episode {episode + 1}/{config.num_episodes} | "
-                    f"Reward: {episode_reward:.2f} | Avg(5): {np.mean(recent_rewards):.2f} | "
-                    f"Best: {best_reward:.2f} | Queue: {metrics['avg_queue_length']:.2f}"
-                )
+        finally:
+            if hasattr(env, 'close'):
+                try:
+                    env.close()
+                except Exception as e:
+                    print(f"Warning: Error closing environment: {e}")
 
         policy_losses = getattr(agent, 'policy_losses', train_losses if agent_type == 'DQN' else [])
         value_losses = getattr(agent, 'value_losses', [])
         entropy_losses = getattr(agent, 'entropy_losses', [])
-
-        if hasattr(env, 'close'):
-            env.close()
 
         return {
             "episode_rewards": episode_rewards,
@@ -1256,33 +1326,40 @@ def evaluate_function(np):
         total_waiting_times = []
         total_throughputs = []
 
-        for _ in range(num_episodes):
-            state = env.reset()
-            if hasattr(controller, "reset"):
-                controller.reset()
+        try:
+            for _ in range(num_episodes):
+                state = env.reset()
+                if hasattr(controller, "reset"):
+                    controller.reset()
 
-            episode_reward = 0
+                episode_reward = 0
 
-            for _ in range(env.max_steps):
-                if is_ppo or hasattr(controller, 'select_action'):
-                    action, _, _ = controller.select_action(state, deterministic=True)
-                elif hasattr(controller, "get_action"):
-                    action = controller.get_action(state)
-                else:
-                    action = np.random.randint(0, 4)
+                for _ in range(env.max_steps):
+                    if is_ppo or hasattr(controller, 'select_action'):
+                        action, _, _ = controller.select_action(state, deterministic=True)
+                    elif hasattr(controller, "get_action"):
+                        action = controller.get_action(state)
+                    else:
+                        action = np.random.randint(0, 4)
 
-                next_state, reward, done, _ = env.step(action)
-                episode_reward += reward
-                state = next_state
+                    next_state, reward, done, _ = env.step(action)
+                    episode_reward += reward
+                    state = next_state
 
-                if done:
-                    break
+                    if done:
+                        break
 
-            metrics = env.get_metrics()
-            total_rewards.append(episode_reward)
-            total_queue_lengths.append(metrics["avg_queue_length"])
-            total_waiting_times.append(metrics["avg_waiting_time"])
-            total_throughputs.append(metrics["throughput"])
+                metrics = env.get_metrics()
+                total_rewards.append(episode_reward)
+                total_queue_lengths.append(metrics["avg_queue_length"])
+                total_waiting_times.append(metrics["avg_waiting_time"])
+                total_throughputs.append(metrics["throughput"])
+
+        except Exception as e:
+            print(f"Error during evaluation: {e}")
+            raise
+        finally:
+            pass
 
         return {
             "mean_reward": np.mean(total_rewards),
@@ -1349,8 +1426,10 @@ def create_mlp_training_data(
     print("Generating MLP training data from SUMO simulation...")
     print("="*60)
     data_env = TrafficIntersection(config)
-    mlp_states, mlp_actions = generate_training_data(data_env, num_episodes=10)
-    data_env.close()  # Close SUMO after data generation
+    try:
+        mlp_states, mlp_actions = generate_training_data(data_env, num_episodes=10)
+    finally:
+        data_env.close()
     print("="*60)
     print(f"✓ Generated {len(mlp_states)} training samples for MLP baseline")
     print(f"  States shape: {mlp_states.shape}, Actions shape: {mlp_actions.shape}")
@@ -1458,11 +1537,11 @@ def train_ppo_adam(
         state_dim=config.state_dim, hidden_dim=256, action_dim=config.action_dim
     ).to(device)
     _ppo_agent = PPOAgent(_ac, config, optimizer_class=optim.Adam)
-    
+
     _results = train_rl_agent(_ppo_agent, _env, config, agent_type='PPO', verbose=True)
     experiment_results["PPO_Adam"] = _results
     agents["PPO_Adam"] = _ppo_agent
-    
+
     print("\n✓ PPO_Adam training complete!")
     return
 
@@ -1485,11 +1564,11 @@ def train_dqn_adam(
 
     _env = TrafficIntersection(config)
     _dqn_agent = DQNAgent(config, optimizer_class=optim.Adam)
-    
+
     _results = train_rl_agent(_dqn_agent, _env, config, agent_type='DQN', verbose=True)
     experiment_results["DQN_Adam"] = _results
     agents["DQN_Adam"] = _dqn_agent
-    
+
     print("\n✓ DQN_Adam training complete!")
     return
 
@@ -1517,11 +1596,11 @@ def train_a2c_adam(
         state_dim=config.state_dim, hidden_dim=256, action_dim=config.action_dim
     ).to(device)
     _a2c_agent = A2CAgent(_ac, config, optimizer_class=optim.Adam)
-    
+
     _results = train_rl_agent(_a2c_agent, _env, config, agent_type='A2C', verbose=True)
     experiment_results["A2C_Adam"] = _results
     agents["A2C_Adam"] = _a2c_agent
-    
+
     print("\n✓ A2C_Adam training complete!")
     return
 
@@ -1549,11 +1628,11 @@ def train_ppo_sgd(
         state_dim=config.state_dim, hidden_dim=256, action_dim=config.action_dim
     ).to(device)
     _ppo_sgd_agent = PPOAgent(_ac, config, optimizer_class=optim.SGD, momentum=0.9)
-    
+
     _results = train_rl_agent(_ppo_sgd_agent, _env, config, agent_type='PPO', verbose=True)
     experiment_results["PPO_SGD"] = _results
     agents["PPO_SGD"] = _ppo_sgd_agent
-    
+
     print("\n✓ PPO_SGD training complete!")
     return
 
@@ -1581,11 +1660,11 @@ def train_ppo_rmsprop(
         state_dim=config.state_dim, hidden_dim=256, action_dim=config.action_dim
     ).to(device)
     _ppo_rms_agent = PPOAgent(_ac, config, optimizer_class=optim.RMSprop, alpha=0.99)
-    
+
     _results = train_rl_agent(_ppo_rms_agent, _env, config, agent_type='PPO', verbose=True)
     experiment_results["PPO_RMSprop"] = _results
     agents["PPO_RMSprop"] = _ppo_rms_agent
-    
+
     print("\n✓ PPO_RMSprop training complete!")
     print("\n" + "=" * 60)
     print("✓ ALL TRAINING EXPERIMENTS COMPLETE!")
@@ -1634,7 +1713,7 @@ def eval_fixed_time(
     _fixed_controller = FixedTimeController(phase_duration=30)
     _fixed_results = evaluate_controller(_fixed_controller, eval_env, num_episodes=num_eval_episodes)
     all_eval_results["Fixed-Time"] = _fixed_results
-    
+
     print("\n✓ Fixed-Time Results:")
     print(f"  Mean Reward: {_fixed_results['mean_reward']:.2f} ± {_fixed_results['std_reward']:.2f}")
     print(f"  Avg Queue: {_fixed_results['mean_queue_length']:.2f}")
@@ -1659,7 +1738,7 @@ def eval_max_pressure(
     _max_pressure_controller = MaxPressureController()
     _max_pressure_results = evaluate_controller(_max_pressure_controller, eval_env, num_episodes=num_eval_episodes)
     all_eval_results["Max Pressure"] = _max_pressure_results
-    
+
     print("\n✓ Max Pressure Results:")
     print(f"  Mean Reward: {_max_pressure_results['mean_reward']:.2f} ± {_max_pressure_results['std_reward']:.2f}")
     print(f"  Avg Queue: {_max_pressure_results['mean_queue_length']:.2f}")
@@ -1684,7 +1763,7 @@ def eval_mlp(
     mlp_predictor.eval()
     _mlp_results = evaluate_controller(mlp_predictor, eval_env, num_episodes=num_eval_episodes)
     all_eval_results["MLP"] = _mlp_results
-    
+
     print("\n✓ MLP Predictor Results:")
     print(f"  Mean Reward: {_mlp_results['mean_reward']:.2f} ± {_mlp_results['std_reward']:.2f}")
     print(f"  Avg Queue: {_mlp_results['mean_queue_length']:.2f}")
@@ -1708,7 +1787,7 @@ def eval_ppo_adam(
 
     _ppo_adam_results = evaluate_controller(agents["PPO_Adam"], eval_env, num_episodes=num_eval_episodes, is_ppo=True)
     all_eval_results["PPO_Adam"] = _ppo_adam_results
-    
+
     print("\n✓ PPO-Adam Results:")
     print(f"  Mean Reward: {_ppo_adam_results['mean_reward']:.2f} ± {_ppo_adam_results['std_reward']:.2f}")
     print(f"  Avg Queue: {_ppo_adam_results['mean_queue_length']:.2f}")
@@ -1732,7 +1811,7 @@ def eval_dqn_adam(
 
     _dqn_adam_results = evaluate_controller(agents["DQN_Adam"], eval_env, num_episodes=num_eval_episodes, is_ppo=True)
     all_eval_results["DQN_Adam"] = _dqn_adam_results
-    
+
     print("\n✓ DQN-Adam Results:")
     print(f"  Mean Reward: {_dqn_adam_results['mean_reward']:.2f} ± {_dqn_adam_results['std_reward']:.2f}")
     print(f"  Avg Queue: {_dqn_adam_results['mean_queue_length']:.2f}")
@@ -1756,7 +1835,7 @@ def eval_a2c_adam(
 
     _a2c_adam_results = evaluate_controller(agents["A2C_Adam"], eval_env, num_episodes=num_eval_episodes, is_ppo=True)
     all_eval_results["A2C_Adam"] = _a2c_adam_results
-    
+
     print("\n✓ A2C-Adam Results:")
     print(f"  Mean Reward: {_a2c_adam_results['mean_reward']:.2f} ± {_a2c_adam_results['std_reward']:.2f}")
     print(f"  Avg Queue: {_a2c_adam_results['mean_queue_length']:.2f}")
@@ -1780,7 +1859,7 @@ def eval_ppo_sgd(
 
     _ppo_sgd_results = evaluate_controller(agents["PPO_SGD"], eval_env, num_episodes=num_eval_episodes, is_ppo=True)
     all_eval_results["PPO_SGD"] = _ppo_sgd_results
-    
+
     print("\n✓ PPO-SGD Results:")
     print(f"  Mean Reward: {_ppo_sgd_results['mean_reward']:.2f} ± {_ppo_sgd_results['std_reward']:.2f}")
     print(f"  Avg Queue: {_ppo_sgd_results['mean_queue_length']:.2f}")
@@ -1804,7 +1883,7 @@ def eval_ppo_rmsprop(
 
     _ppo_rms_results = evaluate_controller(agents["PPO_RMSprop"], eval_env, num_episodes=num_eval_episodes, is_ppo=True)
     all_eval_results["PPO_RMSprop"] = _ppo_rms_results
-    
+
     print("\n✓ PPO-RMSprop Results:")
     print(f"  Mean Reward: {_ppo_rms_results['mean_reward']:.2f} ± {_ppo_rms_results['std_reward']:.2f}")
     print(f"  Avg Queue: {_ppo_rms_results['mean_queue_length']:.2f}")
@@ -1815,11 +1894,15 @@ def eval_ppo_rmsprop(
 
 @app.cell
 def eval_complete(eval_env):
-    """Finalize Evaluation"""
-    eval_env.close()
-    print("\n" + "=" * 60)
-    print("✓ ALL EVALUATIONS COMPLETE!")
-    print("=" * 60)
+    """Finalize Evaluation with proper cleanup"""
+    try:
+        eval_env.close()
+    except Exception as e:
+        print(f"Warning: Error closing evaluation environment: {e}")
+    finally:
+        print("\n" + "=" * 60)
+        print("✓ ALL EVALUATIONS COMPLETE!")
+        print("=" * 60)
     return
 
 
@@ -1840,20 +1923,20 @@ def visualization_header(mo):
 def fig1_training_rewards(experiment_results, np, plt):
     """Figure 1: Training Reward Curves for All RL Models"""
     fig1, ax1 = plt.subplots(figsize=(10, 6))
-    
+
     _colors_train = {
         'PPO_Adam': 'blue', 'DQN_Adam': 'green', 'A2C_Adam': 'orange', 
         'PPO_SGD': 'red', 'PPO_RMSprop': 'purple'
     }
     _window = 10
-    
+
     for _name, _results in experiment_results.items():
         _rewards = _results["episode_rewards"]
         if len(_rewards) >= _window:
             _ma = np.convolve(_rewards, np.ones(_window) / _window, mode="valid")
             ax1.plot(_ma, label=_name, color=_colors_train.get(_name, 'gray'), 
                     alpha=0.8, linewidth=2)
-    
+
     ax1.set_xlabel("Episode", fontsize=12)
     ax1.set_ylabel("Reward (10-Episode Moving Average)", fontsize=12)
     ax1.set_title("Figure 1: Training Progress - All RL Models", fontsize=14, fontweight='bold')
@@ -1868,12 +1951,12 @@ def fig1_training_rewards(experiment_results, np, plt):
 def fig2_reward_comparison(all_eval_results, np, plt):
     """Figure 2: Mean Reward Comparison Bar Chart"""
     fig2, ax2 = plt.subplots(figsize=(10, 6))
-    
+
     _model_names = list(all_eval_results.keys())
     _model_rewards = [all_eval_results[n]["mean_reward"] for n in _model_names]
     _model_stds = [all_eval_results[n]["std_reward"] for n in _model_names]
     _colors_bar = plt.cm.tab10(np.linspace(0, 1, len(_model_names)))
-    
+
     _bars = ax2.bar(range(len(_model_names)), _model_rewards, yerr=_model_stds, 
             color=_colors_bar, alpha=0.7, edgecolor="black", capsize=5)
     ax2.set_xticks(range(len(_model_names)))
@@ -1882,11 +1965,11 @@ def fig2_reward_comparison(all_eval_results, np, plt):
     ax2.set_title("Figure 2: Reward Comparison Across All Methods", fontsize=14, fontweight='bold')
     ax2.grid(True, alpha=0.3, axis="y")
     ax2.axhline(y=0, color="black", linestyle="--", alpha=0.5)
-    
+
     for _bar, _val in zip(_bars, _model_rewards):
         ax2.text(_bar.get_x() + _bar.get_width()/2, _bar.get_height() + 2,
                 f'{_val:.1f}', ha='center', va='bottom', fontsize=9)
-    
+
     plt.tight_layout()
     fig2
     return
@@ -1896,19 +1979,19 @@ def fig2_reward_comparison(all_eval_results, np, plt):
 def fig3_mlp_loss(mlp_losses, plt):
     """Figure 3: MLP Baseline Training Loss Curve"""
     fig3, ax3 = plt.subplots(figsize=(8, 5))
-    
+
     ax3.plot(mlp_losses, color="green", linewidth=2)
     ax3.set_xlabel("Epoch", fontsize=12)
     ax3.set_ylabel("Cross-Entropy Loss", fontsize=12)
     ax3.set_title("Figure 3: MLP Baseline Training Loss", fontsize=14, fontweight='bold')
     ax3.grid(True, alpha=0.3)
-    
+
     # Add start and end annotations
     ax3.annotate(f'Start: {mlp_losses[0]:.3f}', xy=(0, mlp_losses[0]), 
                 xytext=(5, mlp_losses[0]+0.1), fontsize=10)
     ax3.annotate(f'End: {mlp_losses[-1]:.3f}', xy=(len(mlp_losses)-1, mlp_losses[-1]), 
                 xytext=(len(mlp_losses)-15, mlp_losses[-1]+0.1), fontsize=10)
-    
+
     plt.tight_layout()
     fig3
     return
@@ -1918,11 +2001,11 @@ def fig3_mlp_loss(mlp_losses, plt):
 def fig4_queue_comparison(all_eval_results, np, plt):
     """Figure 4: Queue Length Comparison"""
     fig4, ax4 = plt.subplots(figsize=(10, 6))
-    
+
     _model_names = list(all_eval_results.keys())
     _queue_lengths = [all_eval_results[n]["mean_queue_length"] for n in _model_names]
     _colors_bar = plt.cm.tab10(np.linspace(0, 1, len(_model_names)))
-    
+
     _bars = ax4.bar(range(len(_model_names)), _queue_lengths, 
                    color=_colors_bar, alpha=0.7, edgecolor="black")
     ax4.set_xticks(range(len(_model_names)))
@@ -1930,11 +2013,11 @@ def fig4_queue_comparison(all_eval_results, np, plt):
     ax4.set_ylabel("Average Queue Length", fontsize=12)
     ax4.set_title("Figure 4: Queue Length Comparison (Lower is Better)", fontsize=14, fontweight='bold')
     ax4.grid(True, alpha=0.3, axis="y")
-    
+
     for _bar, _val in zip(_bars, _queue_lengths):
         ax4.text(_bar.get_x() + _bar.get_width()/2, _bar.get_height() + 0.1,
                 f'{_val:.2f}', ha='center', va='bottom', fontsize=9)
-    
+
     plt.tight_layout()
     fig4
     return
@@ -1944,7 +2027,7 @@ def fig4_queue_comparison(all_eval_results, np, plt):
 def fig5_optimizer_comparison(experiment_results, np, plt):
     """Figure 5: PPO Optimizer Comparison"""
     fig5, ax5 = plt.subplots(figsize=(8, 5))
-    
+
     _ppo_variants = [k for k in experiment_results.keys() if 'PPO' in k]
     _ppo_final_rewards = []
     for _name in _ppo_variants:
@@ -1952,7 +2035,7 @@ def fig5_optimizer_comparison(experiment_results, np, plt):
         _ppo_final_rewards.append(
             np.mean(_rewards[-50:]) if len(_rewards) >= 50 else np.mean(_rewards)
         )
-    
+
     _colors_opt = ['blue', 'red', 'purple'][:len(_ppo_variants)]
     _bars = ax5.bar(_ppo_variants, _ppo_final_rewards, 
                    color=_colors_opt, alpha=0.7, edgecolor="black")
@@ -1960,11 +2043,11 @@ def fig5_optimizer_comparison(experiment_results, np, plt):
     ax5.set_title("Figure 5: PPO Performance with Different Optimizers", fontsize=14, fontweight='bold')
     ax5.set_xticklabels(_ppo_variants, rotation=45, ha='right', fontsize=10)
     ax5.grid(True, alpha=0.3, axis="y")
-    
+
     for _bar, _val in zip(_bars, _ppo_final_rewards):
         ax5.text(_bar.get_x() + _bar.get_width()/2, _bar.get_height() + 1,
                 f"{_val:.1f}", ha="center", va="bottom", fontsize=10, fontweight='bold')
-    
+
     plt.tight_layout()
     fig5
     return
@@ -1974,11 +2057,11 @@ def fig5_optimizer_comparison(experiment_results, np, plt):
 def fig6_throughput(all_eval_results, np, plt):
     """Figure 6: Throughput Comparison"""
     fig6, ax6 = plt.subplots(figsize=(10, 6))
-    
+
     _model_names = list(all_eval_results.keys())
     _throughputs = [all_eval_results[n]["mean_throughput"] for n in _model_names]
     _colors_bar = plt.cm.tab10(np.linspace(0, 1, len(_model_names)))
-    
+
     _bars = ax6.bar(range(len(_model_names)), _throughputs, 
                    color=_colors_bar, alpha=0.7, edgecolor="black")
     ax6.set_xticks(range(len(_model_names)))
@@ -1986,11 +2069,11 @@ def fig6_throughput(all_eval_results, np, plt):
     ax6.set_ylabel("Average Throughput (Vehicles)", fontsize=12)
     ax6.set_title("Figure 6: Throughput Comparison (Higher is Better)", fontsize=14, fontweight='bold')
     ax6.grid(True, alpha=0.3, axis="y")
-    
+
     for _bar, _val in zip(_bars, _throughputs):
         ax6.text(_bar.get_x() + _bar.get_width()/2, _bar.get_height() + 10,
                 f'{_val:.0f}', ha='center', va='bottom', fontsize=9)
-    
+
     plt.tight_layout()
     fig6
     return
@@ -2000,9 +2083,9 @@ def fig6_throughput(all_eval_results, np, plt):
 def fig7_queue_training(experiment_results, np, plt):
     """Figure 7: Queue Length During Training"""
     fig7, ax7 = plt.subplots(figsize=(10, 6))
-    
+
     _colors = {'PPO_Adam': 'blue', 'DQN_Adam': 'green', 'A2C_Adam': 'orange'}
-    
+
     for _name, _results in experiment_results.items():
         if 'Adam' in _name:
             _queue_data = _results["avg_queue_lengths"]
@@ -2010,7 +2093,7 @@ def fig7_queue_training(experiment_results, np, plt):
                 _ma = np.convolve(_queue_data, np.ones(10) / 10, mode="valid")
                 ax7.plot(_ma, label=_name, color=_colors.get(_name, 'gray'), 
                         linewidth=2, alpha=0.8)
-    
+
     ax7.set_xlabel("Episode", fontsize=12)
     ax7.set_ylabel("Average Queue Length", fontsize=12)
     ax7.set_title("Figure 7: Queue Length During Training (Model Comparison)", fontsize=14, fontweight='bold')
@@ -2025,17 +2108,17 @@ def fig7_queue_training(experiment_results, np, plt):
 def fig8_convergence(experiment_results, np, plt):
     """Figure 8: Training Convergence Comparison"""
     fig8, ax8 = plt.subplots(figsize=(10, 6))
-    
+
     _colors = {'PPO_Adam': 'blue', 'DQN_Adam': 'green', 'A2C_Adam': 'orange',
               'PPO_SGD': 'red', 'PPO_RMSprop': 'purple'}
-    
+
     for _name, _results in experiment_results.items():
         _rewards = _results["episode_rewards"]
         if len(_rewards) >= 20:
             _ma = np.convolve(_rewards, np.ones(20) / 20, mode="valid")
             ax8.plot(_ma, label=_name, color=_colors.get(_name, 'gray'), 
                     linewidth=2, alpha=0.8)
-    
+
     ax8.set_xlabel("Episode", fontsize=12)
     ax8.set_ylabel("Reward (20-Episode Moving Average)", fontsize=12)
     ax8.set_title("Figure 8: Training Convergence Comparison", fontsize=14, fontweight='bold')
@@ -2050,11 +2133,11 @@ def fig8_convergence(experiment_results, np, plt):
 def fig9_waiting_time(all_eval_results, np, plt):
     """Figure 9: Average Waiting Time Comparison"""
     fig9, ax9 = plt.subplots(figsize=(10, 6))
-    
+
     _model_names = list(all_eval_results.keys())
     _waiting_times = [all_eval_results[n]["mean_waiting_time"] for n in _model_names]
     _colors_bar = plt.cm.Reds(np.linspace(0.3, 0.9, len(_model_names)))
-    
+
     _bars = ax9.bar(range(len(_model_names)), _waiting_times, 
                    color=_colors_bar, alpha=0.8, edgecolor="black")
     ax9.set_xticks(range(len(_model_names)))
@@ -2062,11 +2145,11 @@ def fig9_waiting_time(all_eval_results, np, plt):
     ax9.set_ylabel("Average Waiting Time (seconds)", fontsize=12)
     ax9.set_title("Figure 9: Average Waiting Time (Lower is Better)", fontsize=14, fontweight='bold')
     ax9.grid(True, alpha=0.3, axis="y")
-    
+
     for _bar, _val in zip(_bars, _waiting_times):
         ax9.text(_bar.get_x() + _bar.get_width()/2, _bar.get_height() + 0.5,
                 f'{_val:.1f}', ha='center', va='bottom', fontsize=9)
-    
+
     plt.tight_layout()
     fig9
     return
@@ -2076,21 +2159,21 @@ def fig9_waiting_time(all_eval_results, np, plt):
 def fig10_ppo_rewards(experiment_results, np, plt):
     """Figure 10: PPO Adam Episode Rewards"""
     fig10, _ax = plt.subplots(figsize=(10, 6))
-    
+
     _ppo_data = experiment_results.get("PPO_Adam", {})
     _rewards = _ppo_data.get("episode_rewards", [])
-    
+
     _ax.plot(_rewards, alpha=0.5, color='blue', label='Raw')
     if len(_rewards) >= 10:
         _ma = np.convolve(_rewards, np.ones(10)/10, mode='valid')
         _ax.plot(range(9, len(_rewards)), _ma, color='red', linewidth=2, label='MA-10')
-    
+
     _ax.set_xlabel("Episode", fontsize=12)
     _ax.set_ylabel("Reward", fontsize=12)
     _ax.set_title("Figure 10: PPO-Adam Episode Rewards", fontsize=14, fontweight='bold')
     _ax.legend()
     _ax.grid(True, alpha=0.3)
-    
+
     plt.tight_layout()
     fig10
     return
@@ -2100,21 +2183,21 @@ def fig10_ppo_rewards(experiment_results, np, plt):
 def fig11_ppo_queues(experiment_results, np, plt):
     """Figure 11: PPO Adam Average Queue Length"""
     fig11, _ax = plt.subplots(figsize=(10, 6))
-    
+
     _ppo_data = experiment_results.get("PPO_Adam", {})
     _queues = _ppo_data.get("avg_queue_lengths", [])
-    
+
     _ax.plot(_queues, alpha=0.5, color='green', label='Raw')
     if len(_queues) >= 10:
         _ma_q = np.convolve(_queues, np.ones(10)/10, mode='valid')
         _ax.plot(range(9, len(_queues)), _ma_q, color='red', linewidth=2, label='MA-10')
-    
+
     _ax.set_xlabel("Episode", fontsize=12)
     _ax.set_ylabel("Queue Length", fontsize=12)
     _ax.set_title("Figure 11: PPO-Adam Average Queue Length", fontsize=14, fontweight='bold')
     _ax.legend()
     _ax.grid(True, alpha=0.3)
-    
+
     plt.tight_layout()
     fig11
     return
@@ -2124,19 +2207,19 @@ def fig11_ppo_queues(experiment_results, np, plt):
 def fig12_ppo_reward_dist(experiment_results, np, plt):
     """Figure 12: PPO Adam Reward Distribution"""
     fig12, _ax = plt.subplots(figsize=(10, 6))
-    
+
     _ppo_data = experiment_results.get("PPO_Adam", {})
     _rewards = _ppo_data.get("episode_rewards", [])
-    
+
     _ax.hist(_rewards, bins=20, color='blue', alpha=0.7, edgecolor='black')
     _ax.axvline(np.mean(_rewards), color='red', linestyle='--', label=f'Mean: {np.mean(_rewards):.1f}')
-    
+
     _ax.set_xlabel("Reward", fontsize=12)
     _ax.set_ylabel("Frequency", fontsize=12)
     _ax.set_title("Figure 12: PPO-Adam Reward Distribution", fontsize=14, fontweight='bold')
     _ax.legend()
     _ax.grid(True, alpha=0.3)
-    
+
     plt.tight_layout()
     fig12
     return
@@ -2146,17 +2229,17 @@ def fig12_ppo_reward_dist(experiment_results, np, plt):
 def fig13_ppo_cumulative(experiment_results, np, plt):
     """Figure 13: PPO Adam Cumulative Reward"""
     fig13, _ax = plt.subplots(figsize=(10, 6))
-    
+
     _ppo_data = experiment_results.get("PPO_Adam", {})
     _rewards = _ppo_data.get("episode_rewards", [])
     _cumulative = np.cumsum(_rewards)
-    
+
     _ax.plot(_cumulative, color='purple', linewidth=2)
     _ax.set_xlabel("Episode", fontsize=12)
     _ax.set_ylabel("Cumulative Reward", fontsize=12)
     _ax.set_title("Figure 13: PPO-Adam Cumulative Reward", fontsize=14, fontweight='bold')
     _ax.grid(True, alpha=0.3)
-    
+
     plt.tight_layout()
     fig13
     return
@@ -2166,25 +2249,25 @@ def fig13_ppo_cumulative(experiment_results, np, plt):
 def fig14_model_radar(all_eval_results, np, plt):
     """Figure 14: Radar Chart - Model Performance Comparison"""
     fig14, ax14 = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
-    
+
     # Select key models
     _models = ['Fixed-Time', 'Max Pressure', 'PPO_Adam', 'DQN_Adam', 'A2C_Adam']
     _models = [m for m in _models if m in all_eval_results]
-    
+
     # Metrics (normalized 0-1, higher is better for all)
     _categories = ['Reward', 'Low Queue', 'Low Wait', 'Throughput']
-    
+
     # Get values and normalize
     _max_reward = max(abs(all_eval_results[m]["mean_reward"]) for m in _models) + 1
     _max_queue = max(all_eval_results[m]["mean_queue_length"] for m in _models) + 1
     _max_wait = max(all_eval_results[m]["mean_waiting_time"] for m in _models) + 1
     _max_through = max(all_eval_results[m]["mean_throughput"] for m in _models) + 1
-    
+
     _angles = np.linspace(0, 2*np.pi, len(_categories), endpoint=False).tolist()
     _angles += _angles[:1]  # Complete the circle
-    
+
     _colors = ['gray', 'orange', 'blue', 'green', 'red']
-    
+
     for _idx, _model in enumerate(_models):
         _res = all_eval_results[_model]
         _values = [
@@ -2196,7 +2279,7 @@ def fig14_model_radar(all_eval_results, np, plt):
         _values += _values[:1]
         ax14.plot(_angles, _values, 'o-', linewidth=2, label=_model, color=_colors[_idx])
         ax14.fill(_angles, _values, alpha=0.1, color=_colors[_idx])
-    
+
     ax14.set_xticks(_angles[:-1])
     ax14.set_xticklabels(_categories, fontsize=11)
     ax14.set_title("Figure 14: Model Performance Radar Chart", fontsize=14, fontweight='bold', pad=20)
@@ -2210,20 +2293,20 @@ def fig14_model_radar(all_eval_results, np, plt):
 def fig15_boxplot(experiment_results, plt):
     """Figure 15: Box Plot of Episode Rewards"""
     fig15, ax15 = plt.subplots(figsize=(10, 6))
-    
+
     _data = []
     _labels = []
     for _name, _results in experiment_results.items():
         _data.append(_results["episode_rewards"])
         _labels.append(_name)
-    
+
     _bp = ax15.boxplot(_data, labels=_labels, patch_artist=True)
-    
+
     _colors = ['blue', 'green', 'orange', 'red', 'purple']
     for _patch, _color in zip(_bp['boxes'], _colors[:len(_data)]):
         _patch.set_facecolor(_color)
         _patch.set_alpha(0.6)
-    
+
     ax15.set_ylabel("Episode Reward", fontsize=12)
     ax15.set_title("Figure 15: Distribution of Episode Rewards", fontsize=14, fontweight='bold')
     ax15.set_xticklabels(_labels, rotation=45, ha='right', fontsize=10)
@@ -2237,9 +2320,9 @@ def fig15_boxplot(experiment_results, plt):
 def fig16_policy_loss(experiment_results, np, plt):
     """Figure 16: Policy Loss Curves During Training"""
     fig16, ax16 = plt.subplots(figsize=(10, 6))
-    
+
     _colors = {'PPO_Adam': 'blue', 'A2C_Adam': 'orange', 'PPO_SGD': 'red', 'PPO_RMSprop': 'purple'}
-    
+
     for _name, _results in experiment_results.items():
         _losses = _results.get("policy_losses", [])
         if len(_losses) > 0 and _name != 'DQN_Adam':  # DQN doesn't have policy loss
@@ -2250,7 +2333,7 @@ def fig16_policy_loss(experiment_results, np, plt):
             else:
                 ax16.plot(_losses, label=_name, color=_colors.get(_name, 'gray'), 
                          linewidth=2, alpha=0.8)
-    
+
     ax16.set_xlabel("Update Step", fontsize=12)
     ax16.set_ylabel("Policy Loss (5-step MA)", fontsize=12)
     ax16.set_title("Figure 16: Policy Loss During Training", fontsize=14, fontweight='bold')
@@ -2265,9 +2348,9 @@ def fig16_policy_loss(experiment_results, np, plt):
 def fig17_value_loss(experiment_results, np, plt):
     """Figure 17: Value Loss Curves During Training"""
     fig17, ax17 = plt.subplots(figsize=(10, 6))
-    
+
     _colors = {'PPO_Adam': 'blue', 'A2C_Adam': 'orange', 'PPO_SGD': 'red', 'PPO_RMSprop': 'purple'}
-    
+
     for _name, _results in experiment_results.items():
         _losses = _results.get("value_losses", [])
         if len(_losses) > 0:
@@ -2278,7 +2361,7 @@ def fig17_value_loss(experiment_results, np, plt):
             else:
                 ax17.plot(_losses, label=_name, color=_colors.get(_name, 'gray'), 
                          linewidth=2, alpha=0.8)
-    
+
     ax17.set_xlabel("Update Step", fontsize=12)
     ax17.set_ylabel("Value Loss (5-step MA)", fontsize=12)
     ax17.set_title("Figure 17: Value Loss During Training", fontsize=14, fontweight='bold')
@@ -2293,10 +2376,10 @@ def fig17_value_loss(experiment_results, np, plt):
 def fig18_episode_length(experiment_results, np, plt):
     """Figure 18: Episode Length Over Training"""
     fig18, ax18 = plt.subplots(figsize=(10, 6))
-    
+
     _colors = {'PPO_Adam': 'blue', 'DQN_Adam': 'green', 'A2C_Adam': 'orange',
               'PPO_SGD': 'red', 'PPO_RMSprop': 'purple'}
-    
+
     for _name, _results in experiment_results.items():
         _lengths = _results.get("episode_lengths", [])
         if len(_lengths) > 0:
@@ -2307,7 +2390,7 @@ def fig18_episode_length(experiment_results, np, plt):
             else:
                 ax18.plot(_lengths, label=_name, color=_colors.get(_name, 'gray'), 
                          linewidth=2, alpha=0.8)
-    
+
     ax18.set_xlabel("Episode", fontsize=12)
     ax18.set_ylabel("Episode Length (10-ep MA)", fontsize=12)
     ax18.set_title("Figure 18: Episode Length During Training", fontsize=14, fontweight='bold')
@@ -2322,9 +2405,9 @@ def fig18_episode_length(experiment_results, np, plt):
 def fig19_entropy_loss(experiment_results, np, plt):
     """Figure 19: Entropy Loss During Training"""
     fig19, ax19 = plt.subplots(figsize=(10, 6))
-    
+
     _colors = {'PPO_Adam': 'blue', 'A2C_Adam': 'orange', 'PPO_SGD': 'red', 'PPO_RMSprop': 'purple'}
-    
+
     for _name, _results in experiment_results.items():
         _losses = _results.get("entropy_losses", [])
         if len(_losses) > 0:
@@ -2335,7 +2418,7 @@ def fig19_entropy_loss(experiment_results, np, plt):
             else:
                 ax19.plot(_losses, label=_name, color=_colors.get(_name, 'gray'), 
                          linewidth=2, alpha=0.8)
-    
+
     ax19.set_xlabel("Update Step", fontsize=12)
     ax19.set_ylabel("Entropy Loss (5-step MA)", fontsize=12)
     ax19.set_title("Figure 19: Entropy Loss (Exploration) During Training", fontsize=14, fontweight='bold')
@@ -2350,30 +2433,30 @@ def fig19_entropy_loss(experiment_results, np, plt):
 def fig20_lr_decay(config, np, plt):
     """Figure 20: Learning Rate Decay Schedule"""
     fig20, ax20 = plt.subplots(figsize=(8, 5))
-    
+
     _episodes = np.arange(config.num_episodes)
     _initial_lr = config.learning_rate
-    
+
     # Linear decay schedule (matches the training loop)
     _lr_schedule = [max(0.1, 1.0 - ep / config.num_episodes) * _initial_lr for ep in _episodes]
-    
+
     ax20.plot(_episodes, _lr_schedule, color='blue', linewidth=2, label='Linear Decay')
     ax20.axhline(y=_initial_lr, color='green', linestyle='--', alpha=0.5, label=f'Initial LR: {_initial_lr}')
     ax20.axhline(y=_initial_lr * 0.1, color='red', linestyle='--', alpha=0.5, label=f'Min LR: {_initial_lr * 0.1}')
-    
+
     ax20.set_xlabel("Episode", fontsize=12)
     ax20.set_ylabel("Learning Rate", fontsize=12)
     ax20.set_title("Figure 20: Learning Rate Decay Schedule", fontsize=14, fontweight='bold')
     ax20.legend(fontsize=10)
     ax20.grid(True, alpha=0.3)
     ax20.set_ylim(0, _initial_lr * 1.1)
-    
+
     # Add annotations
     ax20.annotate(f'Start: {_initial_lr:.4f}', xy=(0, _initial_lr), 
                  xytext=(5, _initial_lr + 0.0001), fontsize=10)
     ax20.annotate(f'End: {_lr_schedule[-1]:.5f}', xy=(config.num_episodes-1, _lr_schedule[-1]), 
                  xytext=(config.num_episodes-30, _lr_schedule[-1] + 0.0002), fontsize=10)
-    
+
     plt.tight_layout()
     fig20
     return
@@ -2383,7 +2466,7 @@ def fig20_lr_decay(config, np, plt):
 def tables_header(mo):
     mo.md("""
     ## 10. Results Tables
-    
+
     The following tables summarize the experimental results for the report.
     """)
     return
@@ -2394,7 +2477,7 @@ def table1_config(config, mo):
     """Table 1: Environment Configuration"""
     table1 = f"""
     ### Table 1: Environment Configuration Parameters
-    
+
     | Parameter | Value | Description |
     |-----------|-------|-------------|
     | Number of Lanes | {config.num_lanes} | Approach lanes per direction |
@@ -2416,7 +2499,7 @@ def table2_ppo_hyperparams(config, mo):
     """Table 2: PPO Hyperparameters"""
     table2 = f"""
     ### Table 2: PPO Hyperparameters
-    
+
     | Hyperparameter | Value | Description |
     |----------------|-------|-------------|
     | Discount Factor (γ) | {config.gamma} | Future reward discounting |
@@ -2439,7 +2522,7 @@ def table3_dqn_hyperparams(config, mo):
     """Table 3: DQN Hyperparameters"""
     table3 = f"""
     ### Table 3: DQN Hyperparameters
-    
+
     | Hyperparameter | Value | Description |
     |----------------|-------|-------------|
     | Buffer Size | {config.buffer_size} | Replay buffer capacity |
@@ -2460,7 +2543,7 @@ def table4_training_config(config, mo):
     """Table 4: Training Configuration"""
     table4 = f"""
     ### Table 4: Training Configuration
-    
+
     | Parameter | Value |
     |-----------|-------|
     | Training Episodes | {config.num_episodes} |
@@ -2484,10 +2567,10 @@ def table5_performance(all_eval_results, mo):
             f"{_res['mean_queue_length']:.2f} | {_res['mean_waiting_time']:.2f} | "
             f"{_res['mean_throughput']:.0f} |"
         )
-    
+
     _table5 = f"""
     ### Table 5: Overall Performance Comparison
-    
+
     | Method | Mean Reward | Std Dev | Avg Queue | Avg Wait (s) | Throughput |
     |--------|-------------|---------|-----------|--------------|------------|
     {chr(10).join(_rows)}
@@ -2501,25 +2584,25 @@ def table6_improvement(all_eval_results, mo):
     """Table 6: Best RL Agent Improvement Over Baselines"""
     _rl_agents = {k: v for k, v in all_eval_results.items() if k in ["PPO_Adam", "DQN_Adam", "A2C_Adam"]}
     _baselines = {k: v for k, v in all_eval_results.items() if k in ["Fixed-Time", "Max Pressure", "MLP"]}
-    
+
     _best_rl_name = max(_rl_agents.keys(), key=lambda k: _rl_agents[k].get('mean_reward', 0)) if _rl_agents else "N/A"
     _best_rl = _rl_agents.get(_best_rl_name, {})
-    
+
     def _calc_improvement(_rl_val, _base_val):
         if _base_val == 0:
             return 0
         return ((_rl_val - _base_val) / abs(_base_val)) * 100
-    
+
     _rows = []
     for _name, _base in _baselines.items():
         _base_reward = _base.get('mean_reward', 0)
         _rl_reward = _best_rl.get('mean_reward', 0)
         _improvement = _calc_improvement(_rl_reward, _base_reward if _base_reward != 0 else 1)
         _rows.append(f"| {_name} | {_base_reward:.2f} | {_rl_reward:.2f} | {_improvement:+.1f}% |")
-    
+
     _table6 = f"""
     ### Table 6: Best RL Agent ({_best_rl_name}) Improvement Over Baselines
-    
+
     | Baseline | Baseline Reward | {_best_rl_name} Reward | Improvement (%) |
     |----------|-----------------|----------------------|-----------------|
     {chr(10).join(_rows)}
@@ -2534,21 +2617,21 @@ def table7_rl_comparison(all_eval_results, mo):
     _ppo = all_eval_results.get("PPO_Adam", {})
     _dqn = all_eval_results.get("DQN_Adam", {})
     _a2c = all_eval_results.get("A2C_Adam", {})
-    
+
     _rl_agents = {"PPO": _ppo, "DQN": _dqn, "A2C": _a2c}
-    
+
     def _get_best_agent(_metric, _higher_is_better=True):
         _vals = {k: v.get(_metric, 0) for k, v in _rl_agents.items()}
         return max(_vals, key=_vals.get) if _higher_is_better else min(_vals, key=_vals.get)
-    
+
     _best_reward = _get_best_agent('mean_reward', True)
     _best_queue = _get_best_agent('mean_queue_length', False)
     _best_wait = _get_best_agent('mean_waiting_time', False)
     _best_throughput = _get_best_agent('mean_throughput', True)
-    
+
     _table7 = f"""
     ### Table 7: Reinforcement Learning Algorithm Comparison
-    
+
     | Metric | PPO | DQN | A2C | Best |
     |--------|-----|-----|-----|------|
     | Mean Reward | {_ppo.get('mean_reward', 0):.2f} | {_dqn.get('mean_reward', 0):.2f} | {_a2c.get('mean_reward', 0):.2f} | {_best_reward} |
@@ -2567,11 +2650,11 @@ def table8_optimizer_comparison(experiment_results, mo, np):
     _ppo_adam = experiment_results.get("PPO_Adam", {})
     _ppo_sgd = experiment_results.get("PPO_SGD", {})
     _ppo_rms = experiment_results.get("PPO_RMSprop", {})
-    
+
     def _get_final_reward(_data):
         _rewards = _data.get("episode_rewards", [0])
         return np.mean(_rewards[-20:]) if len(_rewards) >= 20 else np.mean(_rewards)
-    
+
     def _get_convergence(_data):
         _rewards = _data.get("episode_rewards", [])
         if len(_rewards) < 20:
@@ -2582,20 +2665,20 @@ def table8_optimizer_comparison(experiment_results, mo, np):
             if _val >= 0.9 * _final:
                 return _i
         return len(_rewards)
-    
+
     _optimizers = {"Adam": _ppo_adam, "SGD": _ppo_sgd, "RMSprop": _ppo_rms}
     _final_rewards = {k: _get_final_reward(v) for k, v in _optimizers.items()}
     _best_optimizer = max(_final_rewards, key=_final_rewards.get)
-    
+
     _table8 = f"""
     ### Table 8: PPO Optimizer Comparison
-    
+
     | Optimizer | Final Reward | Max Reward | Convergence Episode | Best |
     |-----------|--------------|------------|---------------------|------|
     | Adam | {_get_final_reward(_ppo_adam):.2f} | {max(_ppo_adam.get('episode_rewards', [0])):.2f} | ~{_get_convergence(_ppo_adam)} | {'✓' if _best_optimizer == 'Adam' else ''} |
     | SGD | {_get_final_reward(_ppo_sgd):.2f} | {max(_ppo_sgd.get('episode_rewards', [0])):.2f} | ~{_get_convergence(_ppo_sgd)} | {'✓' if _best_optimizer == 'SGD' else ''} |
     | RMSprop | {_get_final_reward(_ppo_rms):.2f} | {max(_ppo_rms.get('episode_rewards', [0])):.2f} | ~{_get_convergence(_ppo_rms)} | {'✓' if _best_optimizer == 'RMSprop' else ''} |
-    
+
     **Best Optimizer:** {_best_optimizer}
     """
     mo.md(_table8)
@@ -2607,7 +2690,7 @@ def table9_network_architecture(mo):
     """Table 9: Neural Network Architecture"""
     table9 = """
     ### Table 9: Neural Network Architectures
-    
+
     | Network | Layer | Neurons | Activation |
     |---------|-------|---------|------------|
     | **Actor-Critic (PPO)** | Input | 12 | - |
@@ -2633,17 +2716,17 @@ def table10_state_space(mo):
     """Table 10: State and Action Space Description"""
     table10 = """
     ### Table 10: State and Action Space
-    
+
     **State Space (12 dimensions):**
-    
+
     | Index | Feature | Range | Description |
     |-------|---------|-------|-------------|
     | 0-3 | Queue Lengths | [0, 1] | Normalized halting vehicles per lane |
     | 4-7 | Waiting Times | [0, 1] | Normalized waiting time per lane |
     | 8-11 | Current Phase | {0, 1} | One-hot encoded traffic phase |
-    
+
     **Action Space (4 discrete actions):**
-    
+
     | Action | Description |
     |--------|-------------|
     | 0 | Phase 0 - North-South through |
@@ -2660,7 +2743,7 @@ def table11_a2c_hyperparams(config, mo):
     """Table 11: A2C Hyperparameters"""
     table11 = f"""
     ### Table 11: A2C Hyperparameters
-    
+
     | Hyperparameter | Value | Description |
     |----------------|-------|-------------|
     | Discount Factor (γ) | {config.gamma} | Future reward discounting |
@@ -2681,7 +2764,7 @@ def table12_sumo_config(mo):
     """Table 12: SUMO Simulation Configuration"""
     table12 = """
     ### Table 12: SUMO Simulation Configuration
-    
+
     | Parameter | Value | Description |
     |-----------|-------|-------------|
     | **Network Source** | OpenStreetMap | Kathmandu road network |
@@ -2690,9 +2773,9 @@ def table12_sumo_config(mo):
     | **Teleport Timeout** | Disabled (-1) | Vehicles wait indefinitely |
     | **Random Seed** | Enabled | Stochastic traffic patterns |
     | **Waiting Time Memory** | 1000 steps | TraCI tracking window |
-    
+
     **Vehicle Types in Simulation:**
-    
+
     | Type | Trip File | Description |
     |------|-----------|-------------|
     | Passenger | osm.passenger.trips.xml | Private cars |
@@ -2701,7 +2784,7 @@ def table12_sumo_config(mo):
     | Truck | osm.truck.trips.xml | Heavy vehicles |
     | Bicycle | osm.bicycle.trips.xml | Non-motorized |
     | Pedestrian | osm.pedestrian.rou.xml | Walking routes |
-    
+
     **TraCI Interface:**
     - Traffic light control via `traci.trafficlight`
     - Lane metrics via `traci.lane`
@@ -2714,31 +2797,31 @@ def table12_sumo_config(mo):
 @app.cell
 def table13_computational_stats(config, experiment_results, mo, np):
     """Table 13: Computational and Training Statistics"""
-    
+
     # Calculate statistics from experiment results
     _total_episodes = config.num_episodes * 5  # 5 experiments
-    
+
     _ppo_rewards = experiment_results.get("PPO_Adam", {}).get("episode_rewards", [])
     _dqn_rewards = experiment_results.get("DQN_Adam", {}).get("episode_rewards", [])
     _a2c_rewards = experiment_results.get("A2C_Adam", {}).get("episode_rewards", [])
-    
+
     _ppo_lengths = experiment_results.get("PPO_Adam", {}).get("episode_lengths", [])
     _dqn_lengths = experiment_results.get("DQN_Adam", {}).get("episode_lengths", [])
     _a2c_lengths = experiment_results.get("A2C_Adam", {}).get("episode_lengths", [])
-    
+
     _avg_ppo_len = np.mean(_ppo_lengths) if _ppo_lengths else 0
     _avg_dqn_len = np.mean(_dqn_lengths) if _dqn_lengths else 0
     _avg_a2c_len = np.mean(_a2c_lengths) if _a2c_lengths else 0
-    
+
     _total_ppo_steps = sum(_ppo_lengths) if _ppo_lengths else 0
     _total_dqn_steps = sum(_dqn_lengths) if _dqn_lengths else 0
     _total_a2c_steps = sum(_a2c_lengths) if _a2c_lengths else 0
-    
+
     _table13 = f"""
     ### Table 13: Computational and Training Statistics
-    
+
     **Training Configuration:**
-    
+
     | Metric | Value |
     |--------|-------|
     | Total Experiments | 5 (PPO×3 + DQN + A2C) |
@@ -2746,17 +2829,17 @@ def table13_computational_stats(config, experiment_results, mo, np):
     | Total Training Episodes | {_total_episodes} |
     | Max Steps per Episode | {config.max_steps_per_episode} |
     | Evaluation Episodes | 5 per controller |
-    
+
     **Per-Model Training Statistics:**
-    
+
     | Model | Avg Episode Length | Total Steps | Final Reward |
     |-------|-------------------|-------------|---------------|
     | PPO-Adam | {_avg_ppo_len:.1f} | {_total_ppo_steps:,} | {np.mean(_ppo_rewards[-10:]) if len(_ppo_rewards) >= 10 else 0:.2f} |
     | DQN-Adam | {_avg_dqn_len:.1f} | {_total_dqn_steps:,} | {np.mean(_dqn_rewards[-10:]) if len(_dqn_rewards) >= 10 else 0:.2f} |
     | A2C-Adam | {_avg_a2c_len:.1f} | {_total_a2c_steps:,} | {np.mean(_a2c_rewards[-10:]) if len(_a2c_rewards) >= 10 else 0:.2f} |
-    
+
     **Environment Specifications:**
-    
+
     | Resource | Details |
     |----------|--------|
     | SUMO Version | 1.x (via TraCI) |
@@ -2767,9 +2850,6 @@ def table13_computational_stats(config, experiment_results, mo, np):
     """
     mo.md(_table13)
     return
-
-
-
 
 
 @app.cell(hide_code=True)
@@ -2810,14 +2890,14 @@ def key_findings_table(all_eval_results, experiment_results, mo, np):
     """Key Findings Table"""
     _best_model = max(all_eval_results.keys(), key=lambda k: all_eval_results[k]['mean_reward'])
     _best_reward = all_eval_results[_best_model]['mean_reward']
-    
+
     _best_queue_model = min(all_eval_results.keys(), key=lambda k: all_eval_results[k]['mean_queue_length'])
     _best_wait_model = min(all_eval_results.keys(), key=lambda k: all_eval_results[k]['mean_waiting_time'])
     _best_throughput_model = max(all_eval_results.keys(), key=lambda k: all_eval_results[k]['mean_throughput'])
 
     _rl_agents = {k: v for k, v in all_eval_results.items() if k in ["PPO_Adam", "DQN_Adam", "A2C_Adam"]}
     _best_rl = max(_rl_agents.keys(), key=lambda k: _rl_agents[k]['mean_reward']) if _rl_agents else "N/A"
-    
+
     _baselines = {k: v for k, v in all_eval_results.items() if k in ["Fixed-Time", "Max Pressure", "MLP"]}
     _best_baseline = max(_baselines.keys(), key=lambda k: _baselines[k]['mean_reward']) if _baselines else "N/A"
 
