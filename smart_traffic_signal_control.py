@@ -48,6 +48,8 @@ def setup_imports():
     import warnings
     import os
     import sys
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import threading
 
     # SUMO imports
     if "SUMO_HOME" in os.environ:
@@ -61,7 +63,6 @@ def setup_imports():
 
     warnings.filterwarnings("ignore")
 
-    # Set seeds for reproducibility
     SEED = 42
     np.random.seed(SEED)
     torch.manual_seed(SEED)
@@ -72,6 +73,8 @@ def setup_imports():
     print(f"Using device: {device}")
     print(f"SUMO_HOME: {os.environ.get('SUMO_HOME', 'Not set')}")
     return (
+        ThreadPoolExecutor,
+        as_completed,
         checkBinary,
         dataclass,
         deque,
@@ -82,6 +85,7 @@ def setup_imports():
         os,
         plt,
         random,
+        threading,
         torch,
         traci,
     )
@@ -118,12 +122,12 @@ def configuration(dataclass):
         gamma: float = 0.99
         gae_lambda: float = 0.95
         clip_epsilon: float = 0.2
-        entropy_coef: float = 0.05
+        entropy_coef: float = 0.005
         value_coef: float = 0.5
         max_grad_norm: float = 0.5
-        learning_rate: float = 1e-3
-        ppo_learning_rate: float = 3e-4
-        batch_size: int = 64
+        learning_rate: float = 1e-4
+        ppo_learning_rate: float = 1e-4
+        batch_size: int = 256
         n_epochs: int = 10
         update_interval: int = 512
         ppo_update_interval: int = 256
@@ -140,15 +144,15 @@ def configuration(dataclass):
         # DQN Hyperparameters
         buffer_size: int = 10000
         batch_size_dqn: int = 64
-        dqn_learning_rate: float = 5e-4
+        dqn_learning_rate: float = 1e-4
         epsilon_start: float = 1.0
         epsilon_end: float = 0.01
         epsilon_decay: float = 0.99
         target_update_freq: int = 100
-        
+
         # A2C Hyperparameters
-        a2c_learning_rate: float = 7e-4
-    
+        a2c_learning_rate: float = 3e-4
+
     config = Config()
     print(f"  - State dimension: {config.state_dim}")
     print(f"  - Action dimension: {config.action_dim}")
@@ -175,47 +179,16 @@ def env_header(mo):
 
 
 @app.cell
-def traffic_environment(checkBinary, config, np, os, traci):
+def traffic_environment(checkBinary, config, np, os, time, traci):
     class SUMOTrafficEnv:
-        """
-        SUMO-based Traffic Environment for Kathmandu traffic simulation.
+        """SUMO-based Traffic Environment for Kathmandu traffic simulation."""
 
-        Uses TraCI to interface with SUMO and control traffic lights.
-
-        Resource Management:
-        - Implements context manager protocol (__enter__/__exit__)
-        - Automatic cleanup in __del__ destructor
-        - Explicit close() method with exception handling
-        - All SUMO connections properly closed in finally blocks
-
-        State Space:
-        - Queue lengths for controlled lanes (4 values)
-        - Average waiting time per lane (4 values)
-        - One-hot encoded current phase (4 values)
-
-        Action Space:
-        - 0-N: Available traffic light phases
-
-        Usage:
-            # Recommended: Use as context manager
-            with SUMOTrafficEnv(config) as env:
-                state = env.reset()
-                # ... training loop ...
-            # Environment automatically closed
-
-            # Or manual management:
-            env = SUMOTrafficEnv(config)
-            try:
-                state = env.reset()
-                # ... training loop ...
-            finally:
-                env.close()
-        """
-
-        def __init__(self, config, gui=False, sumo_cfg_path=None):
+        def __init__(self, config, gui=False, sumo_cfg_path=None, port=None, label=None):
             self.config = config
             self.gui = gui
             self.max_steps = config.max_steps_per_episode
+            self.port = port  # TraCI port for this instance
+            self.label = label or f"sumo_{port or 'default'}"  # Unique label for this TraCI connection
 
             # SUMO configuration
             if sumo_cfg_path:
@@ -227,7 +200,6 @@ def traffic_environment(checkBinary, config, np, os, traci):
                     "sumo", "kathmandu", "osm.sumocfg.xml"
                 )
 
-            # Verify the config file exists
             if not os.path.exists(self.sumo_cfg):
                 raise FileNotFoundError(
                     f"SUMO config not found at: {self.sumo_cfg}\n"
@@ -256,14 +228,19 @@ def traffic_environment(checkBinary, config, np, os, traci):
 
         def _start_sumo(self):
             """Start SUMO simulation with proper cleanup"""
-            # Clean up any existing connection first
-            if self.sumo_running:
+            import time
+
+            try:
+                traci.getConnection(self.label).close()
+            except (traci.exceptions.TraCIException, KeyError, AttributeError):
+                pass
+
+            if self.sumo_running and hasattr(self, 'connection'):
                 try:
-                    traci.close()
+                    self.connection.close()
                 except Exception:
                     pass
-                finally:
-                    self.sumo_running = False
+            self.sumo_running = False
 
             sumo_binary = checkBinary("sumo-gui" if self.gui else "sumo")
 
@@ -271,33 +248,73 @@ def traffic_environment(checkBinary, config, np, os, traci):
             print(f"SUMO binary: {sumo_binary}")
 
             sumo_cmd = [
-                sumo_binary,
                 "-c", self.sumo_cfg,
                 "--no-warnings",
                 "--no-step-log",
                 "--waiting-time-memory", "1000",
-                "--time-to-teleport", "-1",  # Disable teleporting
-                "--random",  # Random seed for variation
+                "--time-to-teleport", "-1",
+                "--random",
+                "--output-prefix", f"{self.label}_",
             ]
 
-            try:
-                traci.start(sumo_cmd)
-                self.sumo_running = True
-            except Exception as e:
-                raise RuntimeError(
-                    f"Failed to start SUMO. Error: {e}\n"
-                    f"Command: {' '.join(sumo_cmd)}\n"
-                    f"Make sure SUMO is properly installed and SUMO_HOME is set."
-                )
+            # Full command for start (includes binary)
+            full_cmd = [sumo_binary] + sumo_cmd
 
-            # Get traffic light IDs
-            self.tl_ids = list(traci.trafficlight.getIDList())
-            if self.tl_ids:
-                self.controlled_tl = self._select_main_intersection()
-                self._setup_controlled_lanes()
-                self._setup_phases()
-            else:
-                print("Warning: No traffic lights found in simulation")
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    try:
+                        traci.getConnection(self.label).close()
+                    except (traci.exceptions.TraCIException, KeyError):
+                        pass
+
+                    if self.port:
+                        traci.start(full_cmd, port=self.port, label=self.label)
+                    else:
+                        traci.start(full_cmd, label=self.label)
+
+                    # Give it a moment to initialize
+                    time.sleep(2 + attempt)
+
+                    self.connection = traci.getConnection(self.label)
+                    self.sumo_running = True
+                    print(f"SUMO started successfully on {self.label}", flush=True)
+                    break # Success!
+                except Exception as e:
+                    print(f"Attempt {attempt+1}/{max_retries} failed to start SUMO: {e}", flush=True)
+                    try:
+                         traci.getConnection(self.label).close()
+                    except:
+                         pass
+
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt
+                        print(f"Retrying in {wait_time} seconds...", flush=True)
+                        time.sleep(wait_time)
+                    else:
+                        raise RuntimeError(
+                            f"Failed to start SUMO after {max_retries} attempts. Error: {e}\n"
+                            f"Command: {' '.join(full_cmd)}\n"
+                        )
+
+            self._sumo_cmd_args = sumo_cmd
+
+            try:
+                self.tl_ids = list(self.connection.trafficlight.getIDList())
+                if self.tl_ids:
+                    self.controlled_tl = self._select_main_intersection()
+                    self._setup_controlled_lanes()
+                    self._setup_phases()
+                else:
+                    print("Warning: No traffic lights found in simulation")
+            except Exception as e:
+                 print(f"Error initializing traffic lights: {e}")
+                 # Try to close if we failed initialization
+                 try:
+                     self.connection.close()
+                 except: 
+                     pass
+                 raise
 
         def _select_main_intersection(self):
             """Select the main intersection to control (one with most controlled lanes)"""
@@ -305,7 +322,7 @@ def traffic_environment(checkBinary, config, np, os, traci):
             selected_tl = self.tl_ids[0]
 
             for tl_id in self.tl_ids:
-                lanes = traci.trafficlight.getControlledLanes(tl_id)
+                lanes = self.connection.trafficlight.getControlledLanes(tl_id)
                 if len(lanes) > max_lanes:
                     max_lanes = len(lanes)
                     selected_tl = tl_id
@@ -315,7 +332,7 @@ def traffic_environment(checkBinary, config, np, os, traci):
         def _setup_controlled_lanes(self):
             """Setup the lanes controlled by our traffic light"""
             if self.controlled_tl:
-                all_lanes = list(traci.trafficlight.getControlledLanes(self.controlled_tl))
+                all_lanes = list(self.connection.trafficlight.getControlledLanes(self.controlled_tl))
                 # Remove duplicates while preserving order
                 seen = set()
                 self.controlled_lanes = []
@@ -331,14 +348,22 @@ def traffic_environment(checkBinary, config, np, os, traci):
         def _setup_phases(self):
             """Setup available phases for the traffic light"""
             if self.controlled_tl:
-                logic = traci.trafficlight.getAllProgramLogics(self.controlled_tl)
+                logic = self.connection.trafficlight.getAllProgramLogics(self.controlled_tl)
                 if logic:
                     phases = logic[0].phases
                     self.num_phases = min(len(phases), self.config.action_dim)
 
         def reset(self):
             """Reset the environment"""
-            self._start_sumo()
+            if self.sumo_running and hasattr(self, 'connection'):
+                try:
+                    self.connection.load(self._sumo_cmd_args)
+                    time.sleep(0.1)
+                except Exception as e:
+                    print(f"Reload failed ({e}), restarting SUMO...", flush=True)
+                    self._start_sumo()
+            else:
+                self._start_sumo()
 
             self.episode_step = 0
             self.total_throughput = 0
@@ -347,22 +372,21 @@ def traffic_environment(checkBinary, config, np, os, traci):
 
             # Run a few steps to populate the network
             for _ in range(10):
-                traci.simulationStep()
+                self.connection.simulationStep()
 
             return self._get_state()
 
         def _get_state(self):
             """Construct state vector from SUMO simulation"""
-            # Get queue lengths (halting vehicles per lane)
             queue_lengths = np.zeros(self.num_lanes)
             waiting_times = np.zeros(self.num_lanes)
 
             for i, lane in enumerate(self.controlled_lanes[:self.num_lanes]):
                 try:
                     # Number of halting vehicles (speed < 0.1 m/s)
-                    queue_lengths[i] = traci.lane.getLastStepHaltingNumber(lane)
+                    queue_lengths[i] = self.connection.lane.getLastStepHaltingNumber(lane)
                     # Mean waiting time on the lane
-                    waiting_times[i] = traci.lane.getWaitingTime(lane)
+                    waiting_times[i] = self.connection.lane.getWaitingTime(lane)
                 except traci.exceptions.TraCIException:
                     pass
 
@@ -390,7 +414,7 @@ def traffic_environment(checkBinary, config, np, os, traci):
             queue_lengths = np.zeros(self.num_lanes)
             for i, lane in enumerate(self.controlled_lanes[:self.num_lanes]):
                 try:
-                    queue_lengths[i] = traci.lane.getLastStepHaltingNumber(lane)
+                    queue_lengths[i] = self.connection.lane.getLastStepHaltingNumber(lane)
                 except traci.exceptions.TraCIException:
                     pass
             return queue_lengths
@@ -400,7 +424,7 @@ def traffic_environment(checkBinary, config, np, os, traci):
             waiting_times = np.zeros(self.num_lanes)
             for i, lane in enumerate(self.controlled_lanes[:self.num_lanes]):
                 try:
-                    waiting_times[i] = traci.lane.getWaitingTime(lane)
+                    waiting_times[i] = self.connection.lane.getWaitingTime(lane)
                 except traci.exceptions.TraCIException:
                     pass
             return waiting_times
@@ -410,7 +434,7 @@ def traffic_environment(checkBinary, config, np, os, traci):
             if self.controlled_tl:
                 try:
                     action = int(action) % self.num_phases
-                    traci.trafficlight.setPhase(self.controlled_tl, action)
+                    self.connection.trafficlight.setPhase(self.controlled_tl, action)
                     self.current_phase = action
                 except traci.exceptions.TraCIException as e:
                     print(f"Error setting phase: {e}")
@@ -419,7 +443,7 @@ def traffic_environment(checkBinary, config, np, os, traci):
             """Compute reward based on traffic metrics"""
             # Throughput reward
             try:
-                arrived = traci.simulation.getArrivedNumber()
+                arrived = self.connection.simulation.getArrivedNumber()
                 self.total_throughput += arrived
             except Exception:
                 arrived = 0
@@ -447,44 +471,34 @@ def traffic_environment(checkBinary, config, np, os, traci):
             """Execute one step in the environment"""
             self.episode_step += 1
 
-            # Get current metrics before action
             old_queues = self._get_queue_lengths()
             old_waiting = self._get_waiting_times()
 
-            # Phase change penalty
             phase_change_penalty = 0
             if action != self.current_phase:
                 phase_change_penalty = 0.1
 
-            # Set the new phase
             self._set_phase(action)
 
-            # Run simulation for delta_time seconds
             for _ in range(self.delta_time):
-                traci.simulationStep()
+                self.connection.simulationStep()
 
-            # Get new metrics after action
             new_queues = self._get_queue_lengths()
             new_waiting = self._get_waiting_times()
 
-            # Compute reward
             reward = self._compute_reward(old_queues, new_queues, old_waiting, new_waiting)
             reward -= phase_change_penalty
 
-            # Update total waiting time
             self.total_waiting_time += np.sum(new_waiting)
 
-            # Check if episode is done
             done = self.episode_step >= self.max_steps
 
-            # Also check if simulation ended
             try:
-                if traci.simulation.getMinExpectedNumber() <= 0:
+                if self.connection.simulation.getMinExpectedNumber() <= 0:
                     done = True
             except Exception:
                 pass
 
-            # Get next state
             next_state = self._get_state()
 
             info = {
@@ -513,7 +527,11 @@ def traffic_environment(checkBinary, config, np, os, traci):
             """Close the SUMO simulation with proper cleanup"""
             if self.sumo_running:
                 try:
-                    traci.close()
+                    if hasattr(self, 'connection'):
+                        try:
+                            self.connection.close()
+                        except Exception:
+                            pass
                 except Exception as e:
                     print(f"Warning: Error closing SUMO connection: {e}")
                 finally:
@@ -562,10 +580,7 @@ def baseline_header(mo):
 def fixed_time_controller_class():
     """Fixed-Time Controller - Traditional Baseline"""
     class FixedTimeController:
-        """
-        Traditional fixed-time traffic signal controller.
-        Cycles through phases with fixed durations.
-        """
+        """Traditional fixed-time traffic signal controller."""
 
         def __init__(self, phase_duration=30, num_phases=4):
             self.phase_duration = phase_duration
@@ -593,10 +608,7 @@ def fixed_time_controller_class():
 def max_pressure_controller_class(np):
     """Max-Pressure Controller - Adaptive Baseline"""
     class MaxPressureController:
-        """
-        Max-Pressure adaptive controller.
-        Selects the phase that relieves maximum queue pressure.
-        """
+        """Max-Pressure adaptive controller."""
 
         def __init__(self):
             pass
@@ -624,10 +636,7 @@ def max_pressure_controller_class(np):
 def mlp_action_predictor_class(device, nn, np, torch):
     """MLPActionPredictor - Action Prediction Network"""
     class MLPActionPredictor(nn.Module):
-        """
-        MLP that predicts optimal action given current state.
-        Uses softmax output for action probabilities.
-        """
+        """MLP for action prediction."""
 
         def __init__(self, state_dim, hidden_dim, action_dim):
             super(MLPActionPredictor, self).__init__()
@@ -691,9 +700,9 @@ def ppo_header(mo):
 
 @app.cell
 def actor_critic_class(device, nn, np, torch):
-    """Combined Actor-Critic Network for PPO (Decoupled Architectures)"""
+    """Combined Actor-Critic Network for PPO"""
     class ActorCritic(nn.Module):
-        """Combined Actor-Critic network for PPO with decoupled actor and critic paths."""
+        """Actor-Critic network with separate actor and critic paths."""
 
         def __init__(self, state_dim, hidden_dim, action_dim):
             super(ActorCritic, self).__init__()
@@ -718,11 +727,9 @@ def actor_critic_class(device, nn, np, torch):
             self._init_weights()
 
         def _init_weights(self):
-            # Standard orthogonal initialization for all layers
             for module in [self.actor, self.critic]:
                 for i, m in enumerate(module):
                     if isinstance(m, nn.Linear):
-                        # Last layer gets smaller initialization
                         if i == len(list(module)) - 1:
                             nn.init.orthogonal_(m.weight, gain=0.01)
                         else:
@@ -838,8 +845,6 @@ def ppo_agent_class(PPOMemory, device, np, optim, torch):
             lr = getattr(config, 'ppo_learning_rate', config.learning_rate)
 
             if optimizer_class == optim.Adam:
-                if 'eps' not in optimizer_kwargs:
-                    optimizer_kwargs['eps'] = 1e-5
                 self.optimizer = optimizer_class(
                     actor_critic.parameters(), lr=lr, **optimizer_kwargs
                 )
@@ -899,7 +904,7 @@ def ppo_agent_class(PPOMemory, device, np, optim, torch):
             states = torch.FloatTensor(states).to(device)
             actions = torch.LongTensor(actions).to(device)
             old_log_probs = torch.FloatTensor(old_log_probs).to(device)
-            old_values = torch.FloatTensor(values).to(device)  # Store old values for clipping
+            old_values = torch.FloatTensor(values).to(device)
             advantages = torch.FloatTensor(advantages).to(device)
             returns = torch.FloatTensor(returns).to(device)
 
@@ -921,7 +926,6 @@ def ppo_agent_class(PPOMemory, device, np, optim, torch):
                         self.actor_critic.evaluate_actions(batch_states, batch_actions)
                     )
 
-                    # Policy loss with clipping
                     ratio = torch.exp(new_log_probs - batch_old_log_probs)
                     surr1 = ratio * batch_advantages
                     surr2 = (
@@ -930,7 +934,6 @@ def ppo_agent_class(PPOMemory, device, np, optim, torch):
                     )
                     policy_loss = -torch.min(surr1, surr2).mean()
 
-                    # Value loss with clipping
                     values_clipped = batch_old_values + torch.clamp(
                         values_pred - batch_old_values,
                         -self.config.clip_epsilon,
@@ -1036,7 +1039,7 @@ def dqn_agent_class(QNetwork, ReplayBuffer, device, nn, optim, random, torch):
                 self.q_net.parameters(), lr=lr, **optimizer_kwargs
             )
 
-            self.huber_loss = nn.SmoothL1Loss()  # Huber loss for stability
+            self.huber_loss = nn.SmoothL1Loss()
 
             self.memory = ReplayBuffer(config.buffer_size)
             self.steps = 0
@@ -1152,11 +1155,10 @@ def a2c_agent_class(device, np, optim, torch):
             log_probs, values, entropy = self.actor_critic.evaluate_actions(states, actions)
 
             advantage = returns - values
-            # Normalize advantages (same as PPO for fair comparison)
             advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
 
             actor_loss = -(log_probs * advantage.detach()).mean()
-            critic_loss = (returns - values).pow(2).mean()  # Use returns for critic loss
+            critic_loss = (returns - values).pow(2).mean()
             entropy_loss = -self.config.entropy_coef * entropy.mean()
             loss = actor_loss + self.config.value_coef * critic_loss + entropy_loss
 
@@ -1217,7 +1219,6 @@ def train_rl_function(device, np, torch):
                 episode_reward = 0
                 episode_length = 0
 
-                # Cosine annealing learning rate decay
                 progress = episode / config.num_episodes
                 lr_multiplier = 0.5 * (1 + np.cos(np.pi * progress))
                 lr_multiplier = max(0.1, lr_multiplier)
@@ -1245,7 +1246,6 @@ def train_rl_function(device, np, torch):
                         mem_len = len(agent.memory.states)
                         interval = getattr(config, 'ppo_update_interval', config.update_interval)
 
-                        # Update strictness: Collect fixed number of steps ignoring episode boundary
                         if mem_len >= interval:
                             with torch.no_grad():
                                 state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
@@ -1517,160 +1517,184 @@ def init_experiment_storage():
 
 
 @app.cell
-def train_ppo_adam(
-    ActorCritic,
-    PPOAgent,
-    TrafficIntersection,
-    agents,
-    config,
-    device,
-    experiment_results,
-    optim,
-    train_rl_agent,
-):
-    """PHASE 1.1: Train PPO with Adam Optimizer"""
-    print("=" * 60)
-    print("MODEL COMPARISON - Training PPO with Adam")
-    print(f"Episodes: {config.num_episodes}")
-    print("=" * 60)
+def define_train_worker(threading):
+    """Define worker function for parallel training"""
+    import time
 
-    _env = TrafficIntersection(config)
-    _ac = ActorCritic(
-        state_dim=config.state_dim, hidden_dim=256, action_dim=config.action_dim
-    ).to(device)
-    _ppo_agent = PPOAgent(_ac, config, optimizer_class=optim.Adam)
+    # Global lock for staggered SUMO initialization
+    sumo_start_lock = threading.Lock()
 
-    _results = train_rl_agent(_ppo_agent, _env, config, agent_type='PPO', verbose=True)
-    experiment_results["PPO_Adam"] = _results
-    agents["PPO_Adam"] = _ppo_agent
+    def train_worker(agent_name, agent_config_func, config, device, TrafficIntersection, train_rl_agent, port, start_delay):
+        """Worker function for parallel training"""
+        thread_id = threading.current_thread().name
 
-    print("\n✓ PPO_Adam training complete!")
-    return
+        time.sleep(start_delay)
+        print(f"[Thread {thread_id}] Starting training: {agent_name} on port {port}")
 
+        try:
+            with sumo_start_lock:
+                print(f"[Thread {thread_id}] Initializing SUMO environment for {agent_name}...")
+                env, agent, agent_type = agent_config_func(config, device, TrafficIntersection, port)
 
-@app.cell
-def train_dqn_adam(
-    DQNAgent,
-    TrafficIntersection,
-    agents,
-    config,
-    experiment_results,
-    optim,
-    train_rl_agent,
-):
-    """PHASE 1.2: Train DQN with Adam Optimizer"""
-    print("=" * 60)
-    print("MODEL COMPARISON - Training DQN with Adam")
-    print(f"Episodes: {config.num_episodes}")
-    print("=" * 60)
+                if hasattr(env, '_start_sumo'):
+                    print(f"[Thread {thread_id}] Pre-launching SUMO for {agent_name}...")
+                    env._start_sumo()
 
-    _env = TrafficIntersection(config)
-    _dqn_agent = DQNAgent(config, optimizer_class=optim.Adam)
+                time.sleep(5)
 
-    _results = train_rl_agent(_dqn_agent, _env, config, agent_type='DQN', verbose=True)
-    experiment_results["DQN_Adam"] = _results
-    agents["DQN_Adam"] = _dqn_agent
+            print(f"[Thread {thread_id}] {agent_name} starting training...")
+            results = train_rl_agent(agent, env, config, agent_type=agent_type, verbose=False)
 
-    print("\n✓ DQN_Adam training complete!")
-    return
+            final_reward = results["episode_rewards"][-10:]
+            avg_final_reward = sum(final_reward) / len(final_reward) if final_reward else 0
+            print(f"[Thread {thread_id}] ✓ {agent_name} complete! Final avg reward: {avg_final_reward:.2f}")
+
+            if env: 
+                env.close()
+
+            return agent_name, agent, results
+        except Exception as e:
+            print(f"[Thread {thread_id}] ✗ {agent_name} failed: {e}")
+            import traceback
+            traceback.print_exc()
+            if 'env' in locals() and env:
+                try:
+                    env.close()
+                except:
+                    pass
+            return agent_name, None, None
+    print("train_worker() function defined")
+    return time, train_worker
 
 
 @app.cell
-def train_a2c_adam(
-    A2CAgent,
-    ActorCritic,
-    TrafficIntersection,
-    agents,
-    config,
-    device,
-    experiment_results,
-    optim,
-    train_rl_agent,
-):
-    """PHASE 1.3: Train A2C with Adam Optimizer"""
-    print("=" * 60)
-    print("MODEL COMPARISON - Training A2C with Adam")
-    print(f"Episodes: {config.num_episodes}")
-    print("=" * 60)
+def agent_config_functions(A2CAgent, ActorCritic, DQNAgent, PPOAgent, optim):
+    """Configuration functions for each RL agent"""
+    def create_ppo_adam(cfg, dev, TrafficIntersection, port):
+        env = TrafficIntersection(cfg, port=port, label=f"ppo_adam_{port}")
+        actor_critic = ActorCritic(
+            state_dim=cfg.state_dim, hidden_dim=256, action_dim=cfg.action_dim
+        ).to(dev)
+        agent = PPOAgent(actor_critic, cfg, optimizer_class=optim.Adam)
+        return env, agent, 'PPO'
 
-    _env = TrafficIntersection(config)
-    _ac = ActorCritic(
-        state_dim=config.state_dim, hidden_dim=256, action_dim=config.action_dim
-    ).to(device)
-    _a2c_agent = A2CAgent(_ac, config, optimizer_class=optim.Adam)
+    def create_dqn_adam(cfg, dev, TrafficIntersection, port):
+        env = TrafficIntersection(cfg, port=port, label=f"dqn_adam_{port}")
+        agent = DQNAgent(cfg, optimizer_class=optim.Adam)
+        return env, agent, 'DQN'
 
-    _results = train_rl_agent(_a2c_agent, _env, config, agent_type='A2C', verbose=True)
-    experiment_results["A2C_Adam"] = _results
-    agents["A2C_Adam"] = _a2c_agent
+    def create_a2c_adam(cfg, dev, TrafficIntersection, port):
+        env = TrafficIntersection(cfg, port=port, label=f"a2c_adam_{port}")
+        actor_critic = ActorCritic(
+            state_dim=cfg.state_dim, hidden_dim=256, action_dim=cfg.action_dim
+        ).to(dev)
+        agent = A2CAgent(actor_critic, cfg, optimizer_class=optim.Adam)
+        return env, agent, 'A2C'
 
-    print("\n✓ A2C_Adam training complete!")
-    return
+    def create_ppo_sgd(cfg, dev, TrafficIntersection, port):
+        env = TrafficIntersection(cfg, port=port, label=f"ppo_sgd_{port}")
+        actor_critic = ActorCritic(
+            state_dim=cfg.state_dim, hidden_dim=256, action_dim=cfg.action_dim
+        ).to(dev)
+        agent = PPOAgent(actor_critic, cfg, optimizer_class=optim.SGD, momentum=0.9)
+        return env, agent, 'PPO'
 
+    def create_ppo_rmsprop(cfg, dev, TrafficIntersection, port):
+        env = TrafficIntersection(cfg, port=port, label=f"ppo_rmsprop_{port}")
+        actor_critic = ActorCritic(
+            state_dim=cfg.state_dim, hidden_dim=256, action_dim=cfg.action_dim
+        ).to(dev)
+        agent = PPOAgent(actor_critic, cfg, optimizer_class=optim.RMSprop, alpha=0.99)
+        return env, agent, 'PPO'
 
-@app.cell
-def train_ppo_sgd(
-    ActorCritic,
-    PPOAgent,
-    TrafficIntersection,
-    agents,
-    config,
-    device,
-    experiment_results,
-    optim,
-    train_rl_agent,
-):
-    """PHASE 2.1: Train PPO with SGD Optimizer"""
-    print("=" * 60)
-    print("OPTIMIZER COMPARISON - Training PPO with SGD")
-    print(f"Episodes: {config.num_episodes}")
-    print("=" * 60)
-
-    _env = TrafficIntersection(config)
-    _ac = ActorCritic(
-        state_dim=config.state_dim, hidden_dim=256, action_dim=config.action_dim
-    ).to(device)
-    _ppo_sgd_agent = PPOAgent(_ac, config, optimizer_class=optim.SGD, momentum=0.9)
-
-    _results = train_rl_agent(_ppo_sgd_agent, _env, config, agent_type='PPO', verbose=True)
-    experiment_results["PPO_SGD"] = _results
-    agents["PPO_SGD"] = _ppo_sgd_agent
-
-    print("\n✓ PPO_SGD training complete!")
-    return
+    print("Agent configuration functions defined")
+    return (
+        create_ppo_adam,
+        create_dqn_adam,
+        create_a2c_adam,
+        create_ppo_sgd,
+        create_ppo_rmsprop,
+    )
 
 
 @app.cell
-def train_ppo_rmsprop(
-    ActorCritic,
-    PPOAgent,
+def train_all_parallel(
+    ThreadPoolExecutor,
     TrafficIntersection,
     agents,
+    as_completed,
     config,
+    create_a2c_adam,
+    create_dqn_adam,
+    create_ppo_adam,
+    create_ppo_rmsprop,
+    create_ppo_sgd,
     device,
     experiment_results,
-    optim,
+    os,
     train_rl_agent,
+    train_worker,
 ):
-    """PHASE 2.2: Train PPO with RMSprop Optimizer"""
-    print("=" * 60)
-    print("OPTIMIZER COMPARISON - Training PPO with RMSprop")
-    print(f"Episodes: {config.num_episodes}")
-    print("=" * 60)
+    """PARALLEL TRAINING - Train all RL agents using multi-threading"""
+    max_workers = min(5, os.cpu_count() or 4)
 
-    _env = TrafficIntersection(config)
-    _ac = ActorCritic(
-        state_dim=config.state_dim, hidden_dim=256, action_dim=config.action_dim
-    ).to(device)
-    _ppo_rms_agent = PPOAgent(_ac, config, optimizer_class=optim.RMSprop, alpha=0.99)
+    print("=" * 80)
+    print(f"PARALLEL TRAINING - Running {max_workers} agents simultaneously")
+    print(f"Total episodes per agent: {config.num_episodes}")
+    print(f"CPU cores available: {os.cpu_count()}")
+    print("=" * 80)
 
-    _results = train_rl_agent(_ppo_rms_agent, _env, config, agent_type='PPO', verbose=True)
-    experiment_results["PPO_RMSprop"] = _results
-    agents["PPO_RMSprop"] = _ppo_rms_agent
+    training_tasks = [
+        ("PPO_Adam", create_ppo_adam),
+        ("DQN_Adam", create_dqn_adam),
+        ("A2C_Adam", create_a2c_adam),
+        ("PPO_SGD", create_ppo_sgd),
+        ("PPO_RMSprop", create_ppo_rmsprop),
+    ]
 
-    print("\n✓ PPO_RMSprop training complete!")
-    print("\n" + "=" * 60)
-    print("✓ ALL TRAINING EXPERIMENTS COMPLETE!")
-    print("=" * 60)
+    base_port = 9000
+    completed_count = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(
+                train_worker, 
+                name, 
+                config_func, 
+                config, 
+                device, 
+                TrafficIntersection, 
+                train_rl_agent,
+                base_port + idx,
+                idx * 5
+            ): name 
+            for idx, (name, config_func) in enumerate(training_tasks)
+        }
+
+        for future in as_completed(futures):
+            agent_name = futures[future]
+            try:
+                name, agent, results = future.result()
+                if agent is not None and results is not None:
+                    experiment_results[name] = results
+                    agents[name] = agent
+                    completed_count += 1
+                    print(f"\n[{completed_count}/{len(training_tasks)}] {name} results stored")
+                else:
+                    print(f"\n[WARNING] {name} failed to complete")
+            except Exception as e:
+                print(f"\n[ERROR] {agent_name} encountered exception: {e}")
+                import traceback
+                traceback.print_exc()
+
+    print("\n" + "=" * 80)
+    print(f"✓ PARALLEL TRAINING COMPLETE! ({completed_count}/{len(training_tasks)} agents trained)")
+    print("=" * 80)
+    print("\nTrained agents:")
+    for name in experiment_results.keys():
+        final_rewards = experiment_results[name]["episode_rewards"][-10:]
+        avg_reward = sum(final_rewards) / len(final_rewards) if final_rewards else 0
+        print(f"  - {name}: {len(experiment_results[name]['episode_rewards'])} episodes, "
+              f"final avg reward: {avg_reward:.2f}")
     return
 
 
@@ -1988,7 +2012,6 @@ def fig3_mlp_loss(mlp_losses, plt):
     ax3.set_title("Figure 3: MLP Baseline Training Loss", fontsize=14, fontweight='bold')
     ax3.grid(True, alpha=0.3)
 
-    # Add start and end annotations
     ax3.annotate(f'Start: {mlp_losses[0]:.3f}', xy=(0, mlp_losses[0]), 
                 xytext=(5, mlp_losses[0]+0.1), fontsize=10)
     ax3.annotate(f'End: {mlp_losses[-1]:.3f}', xy=(len(mlp_losses)-1, mlp_losses[-1]), 
@@ -2259,7 +2282,6 @@ def fig14_model_radar(all_eval_results, np, plt):
     # Metrics (normalized 0-1, higher is better for all)
     _categories = ['Reward', 'Low Queue', 'Low Wait', 'Throughput']
 
-    # Get values and normalize
     _max_reward = max(abs(all_eval_results[m]["mean_reward"]) for m in _models) + 1
     _max_queue = max(all_eval_results[m]["mean_queue_length"] for m in _models) + 1
     _max_wait = max(all_eval_results[m]["mean_waiting_time"] for m in _models) + 1
@@ -2453,7 +2475,6 @@ def fig20_lr_decay(config, np, plt):
     ax20.grid(True, alpha=0.3)
     ax20.set_ylim(0, _initial_lr * 1.1)
 
-    # Add annotations
     ax20.annotate(f'Start: {_initial_lr:.4f}', xy=(0, _initial_lr), 
                  xytext=(5, _initial_lr + 0.0001), fontsize=10)
     ax20.annotate(f'End: {_lr_schedule[-1]:.5f}', xy=(config.num_episodes-1, _lr_schedule[-1]), 
@@ -2800,7 +2821,6 @@ def table12_sumo_config(mo):
 def table13_computational_stats(config, experiment_results, mo, np):
     """Table 13: Computational and Training Statistics"""
 
-    # Calculate statistics from experiment results
     _total_episodes = config.num_episodes * 5  # 5 experiments
 
     _ppo_rewards = experiment_results.get("PPO_Adam", {}).get("episode_rewards", [])

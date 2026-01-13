@@ -1,7 +1,7 @@
 .DS_Store
 __marimo__/
-sumo/kathmandu/edgeData.xml
-sumo/kathmandu/stats.xml
-sumo/kathmandu/stopinfos.xml
-sumo/kathmandu/tripinfos.xml
+sumo/kathmandu/*edgeData.xml
+sumo/kathmandu/*stats.xml
+sumo/kathmandu/*stopinfos.xml
+sumo/kathmandu/*tripinfos.xml
 __pycache__/
