@@ -2195,9 +2195,16 @@ def fig10_ppo_rewards(experiment_results, np, plt):
     """Figure 10: Best RL Agent Episode Rewards"""
     fig10, _ax = plt.subplots(figsize=(10, 6))
 
-    _best_agent = max(experiment_results.keys(), 
-                     key=lambda k: np.mean(experiment_results[k]['episode_rewards'][-50:]))
-    _agent_data = experiment_results.get(_best_agent, {})
+    _rl_models = {k: v for k, v in experiment_results.items() 
+                  if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
+    _best_agent = max(_rl_models.keys(), 
+                     key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
+    
+    if not _best_agent:
+        _ax.text(0.5, 0.5, 'No RL agent data available', ha='center', va='center')
+        return
+    
+    _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
 
     _ax.plot(_rewards, alpha=0.5, color='blue', label='Raw')
@@ -2221,9 +2228,16 @@ def fig11_ppo_queues(experiment_results, np, plt):
     """Figure 11: Best RL Agent Average Queue Length"""
     fig11, _ax = plt.subplots(figsize=(10, 6))
 
-    _best_agent = max(experiment_results.keys(), 
-                     key=lambda k: np.mean(experiment_results[k]['episode_rewards'][-50:]))
-    _agent_data = experiment_results.get(_best_agent, {})
+    _rl_models = {k: v for k, v in experiment_results.items() 
+                  if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
+    _best_agent = max(_rl_models.keys(), 
+                     key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
+    
+    if not _best_agent:
+        _ax.text(0.5, 0.5, 'No RL agent data available', ha='center', va='center')
+        return
+    
+    _agent_data = _rl_models[_best_agent]
     _queues = _agent_data.get("avg_queue_lengths", [])
 
     _ax.plot(_queues, alpha=0.5, color='green', label='Raw')
@@ -2247,9 +2261,16 @@ def fig12_ppo_reward_dist(experiment_results, np, plt):
     """Figure 12: Best RL Agent Reward Distribution"""
     fig12, _ax = plt.subplots(figsize=(10, 6))
 
-    _best_agent = max(experiment_results.keys(), 
-                     key=lambda k: np.mean(experiment_results[k]['episode_rewards'][-50:]))
-    _agent_data = experiment_results.get(_best_agent, {})
+    _rl_models = {k: v for k, v in experiment_results.items() 
+                  if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
+    _best_agent = max(_rl_models.keys(), 
+                     key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
+    
+    if not _best_agent:
+        _ax.text(0.5, 0.5, 'No RL agent data available', ha='center', va='center')
+        return
+    
+    _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
 
     _ax.hist(_rewards, bins=20, color='blue', alpha=0.7, edgecolor='black')
@@ -2271,9 +2292,16 @@ def fig13_ppo_cumulative(experiment_results, np, plt):
     """Figure 13: Best RL Agent Cumulative Reward"""
     fig13, _ax = plt.subplots(figsize=(10, 6))
 
-    _best_agent = max(experiment_results.keys(), 
-                     key=lambda k: np.mean(experiment_results[k]['episode_rewards'][-50:]))
-    _agent_data = experiment_results.get(_best_agent, {})
+    _rl_models = {k: v for k, v in experiment_results.items() 
+                  if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
+    _best_agent = max(_rl_models.keys(), 
+                     key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
+    
+    if not _best_agent:
+        _ax.text(0.5, 0.5, 'No RL agent data available', ha='center', va='center')
+        return
+    
+    _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
     _cumulative = np.cumsum(_rewards)
 
@@ -2628,7 +2656,8 @@ def table5_performance(all_eval_results, mo):
 @app.cell
 def table6_improvement(all_eval_results, mo):
     """Table 6: Best RL Agent Improvement Over Baselines"""
-    _rl_agents = {k: v for k, v in all_eval_results.items() if k in ["PPO_Adam", "DQN_Adam", "A2C_Adam"]}
+    _rl_agents = {k: v for k, v in all_eval_results.items() 
+                  if k not in ["Fixed-Time", "Max Pressure", "MLP"]}
     _baselines = {k: v for k, v in all_eval_results.items() if k in ["Fixed-Time", "Max Pressure", "MLP"]}
 
     _best_rl_name = max(_rl_agents.keys(), key=lambda k: _rl_agents[k].get('mean_reward', 0)) if _rl_agents else "N/A"
@@ -2660,14 +2689,18 @@ def table6_improvement(all_eval_results, mo):
 @app.cell
 def table7_rl_comparison(all_eval_results, mo):
     """Table 7: RL Algorithm Comparison"""
-    _ppo = all_eval_results.get("PPO_Adam", {})
-    _dqn = all_eval_results.get("DQN_Adam", {})
-    _a2c = all_eval_results.get("A2C_Adam", {})
+    
+    _rl_agents = {k: v for k, v in all_eval_results.items() 
+                  if k not in ["Fixed-Time", "Max Pressure", "MLP"]}
 
-    _rl_agents = {"PPO": _ppo, "DQN": _dqn, "A2C": _a2c}
+    if not _rl_agents:
+        mo.md("### Table 7: No RL agent data available")
+        return
 
     def _get_best_agent(_metric, _higher_is_better=True):
-        _vals = {k: v.get(_metric, 0) for k, v in _rl_agents.items()}
+        _vals = {k: v.get(_metric, 0) for k, v in _rl_agents.items() if v.get(_metric) is not None}
+        if not _vals:
+            return "N/A"
         return max(_vals, key=_vals.get) if _higher_is_better else min(_vals, key=_vals.get)
 
     _best_reward = _get_best_agent('mean_reward', True)
@@ -2675,16 +2708,24 @@ def table7_rl_comparison(all_eval_results, mo):
     _best_wait = _get_best_agent('mean_waiting_time', False)
     _best_throughput = _get_best_agent('mean_throughput', True)
 
+    _rows = []
+    for _name, _data in sorted(_rl_agents.items()):
+        _rows.append(
+            f"| {_name} | {_data.get('mean_reward', 0):.2f} | {_data.get('std_reward', 0):.2f} | "
+            f"{_data.get('mean_queue_length', 0):.2f} | {_data.get('mean_waiting_time', 0):.2f} | "
+            f"{_data.get('mean_throughput', 0):.0f} |"
+        )
+
+    _best_row = (f"| **Best** | **{_best_reward}** | - | **{_best_queue}** | "
+                 f"**{_best_wait}** | **{_best_throughput}** |")
+
     _table7 = f"""
     ### Table 7: Reinforcement Learning Algorithm Comparison
 
-    | Metric | PPO | DQN | A2C | Best |
-    |--------|-----|-----|-----|------|
-    | Mean Reward | {_ppo.get('mean_reward', 0):.2f} | {_dqn.get('mean_reward', 0):.2f} | {_a2c.get('mean_reward', 0):.2f} | {_best_reward} |
-    | Reward Std | {_ppo.get('std_reward', 0):.2f} | {_dqn.get('std_reward', 0):.2f} | {_a2c.get('std_reward', 0):.2f} | - |
-    | Avg Queue | {_ppo.get('mean_queue_length', 0):.2f} | {_dqn.get('mean_queue_length', 0):.2f} | {_a2c.get('mean_queue_length', 0):.2f} | {_best_queue} |
-    | Avg Wait | {_ppo.get('mean_waiting_time', 0):.2f} | {_dqn.get('mean_waiting_time', 0):.2f} | {_a2c.get('mean_waiting_time', 0):.2f} | {_best_wait} |
-    | Throughput | {_ppo.get('mean_throughput', 0):.0f} | {_dqn.get('mean_throughput', 0):.0f} | {_a2c.get('mean_throughput', 0):.0f} | {_best_throughput} |
+    | Model | Mean Reward | Reward Std | Avg Queue | Avg Wait (s) | Throughput |
+    |-------|-------------|------------|-----------|--------------|------------|
+    {chr(10).join(_rows)}
+    {_best_row}
     """
     mo.md(_table7)
     return
@@ -2844,23 +2885,24 @@ def table12_sumo_config(mo):
 def table13_computational_stats(config, experiment_results, mo, np):
     """Table 13: Computational and Training Statistics"""
 
-    _total_episodes = config.num_episodes * 5  # 5 experiments
+    _rl_experiments = {k: v for k, v in experiment_results.items() 
+                       if k not in ['Fixed-Time', 'Max Pressure', 'MLP']}
+    
+    _total_experiments = len(_rl_experiments)
+    _total_episodes = config.num_episodes * _total_experiments
 
-    _ppo_rewards = experiment_results.get("PPO_Adam", {}).get("episode_rewards", [])
-    _dqn_rewards = experiment_results.get("DQN_Adam", {}).get("episode_rewards", [])
-    _a2c_rewards = experiment_results.get("A2C_Adam", {}).get("episode_rewards", [])
-
-    _ppo_lengths = experiment_results.get("PPO_Adam", {}).get("episode_lengths", [])
-    _dqn_lengths = experiment_results.get("DQN_Adam", {}).get("episode_lengths", [])
-    _a2c_lengths = experiment_results.get("A2C_Adam", {}).get("episode_lengths", [])
-
-    _avg_ppo_len = np.mean(_ppo_lengths) if _ppo_lengths else 0
-    _avg_dqn_len = np.mean(_dqn_lengths) if _dqn_lengths else 0
-    _avg_a2c_len = np.mean(_a2c_lengths) if _a2c_lengths else 0
-
-    _total_ppo_steps = sum(_ppo_lengths) if _ppo_lengths else 0
-    _total_dqn_steps = sum(_dqn_lengths) if _dqn_lengths else 0
-    _total_a2c_steps = sum(_a2c_lengths) if _a2c_lengths else 0
+    _model_rows = []
+    for _name, _data in sorted(_rl_experiments.items()):
+        _rewards = _data.get("episode_rewards", [])
+        _lengths = _data.get("episode_lengths", [])
+        
+        _avg_len = np.mean(_lengths) if _lengths else 0
+        _total_steps = sum(_lengths) if _lengths else 0
+        _final_reward = np.mean(_rewards[-10:]) if len(_rewards) >= 10 else 0
+        
+        _model_rows.append(
+            f"| {_name} | {_avg_len:.1f} | {_total_steps:,} | {_final_reward:.2f} |"
+        )
 
     _table13 = f"""
     ### Table 13: Computational and Training Statistics
@@ -2869,7 +2911,7 @@ def table13_computational_stats(config, experiment_results, mo, np):
 
     | Metric | Value |
     |--------|-------|
-    | Total Experiments | 5 (PPO×3 + DQN + A2C) |
+    | Total Experiments | {_total_experiments} |
     | Episodes per Experiment | {config.num_episodes} |
     | Total Training Episodes | {_total_episodes} |
     | Max Steps per Episode | {config.max_steps_per_episode} |
@@ -2879,9 +2921,7 @@ def table13_computational_stats(config, experiment_results, mo, np):
 
     | Model | Avg Episode Length | Total Steps | Final Reward |
     |-------|-------------------|-------------|---------------|
-    | PPO-Adam | {_avg_ppo_len:.1f} | {_total_ppo_steps:,} | {np.mean(_ppo_rewards[-10:]) if len(_ppo_rewards) >= 10 else 0:.2f} |
-    | DQN-Adam | {_avg_dqn_len:.1f} | {_total_dqn_steps:,} | {np.mean(_dqn_rewards[-10:]) if len(_dqn_rewards) >= 10 else 0:.2f} |
-    | A2C-Adam | {_avg_a2c_len:.1f} | {_total_a2c_steps:,} | {np.mean(_a2c_rewards[-10:]) if len(_a2c_rewards) >= 10 else 0:.2f} |
+    {chr(10).join(_model_rows)}
 
     **Environment Specifications:**
 
@@ -2940,7 +2980,8 @@ def key_findings_table(all_eval_results, experiment_results, mo, np):
     _best_wait_model = min(all_eval_results.keys(), key=lambda k: all_eval_results[k]['mean_waiting_time'])
     _best_throughput_model = max(all_eval_results.keys(), key=lambda k: all_eval_results[k]['mean_throughput'])
 
-    _rl_agents = {k: v for k, v in all_eval_results.items() if k in ["PPO_Adam", "DQN_Adam", "A2C_Adam"]}
+    _rl_agents = {k: v for k, v in all_eval_results.items() 
+                  if k not in ["Fixed-Time", "Max Pressure", "MLP"]}
     _best_rl = max(_rl_agents.keys(), key=lambda k: _rl_agents[k]['mean_reward']) if _rl_agents else "N/A"
 
     _baselines = {k: v for k, v in all_eval_results.items() if k in ["Fixed-Time", "Max Pressure", "MLP"]}
