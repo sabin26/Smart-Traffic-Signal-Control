@@ -119,21 +119,21 @@ def configuration(dataclass):
         action_dim: int = 4  # 4 possible signal phases
 
         # PPO Hyperparameters
-        gamma: float = 0.99
-        gae_lambda: float = 0.95
-        clip_epsilon: float = 0.2
-        entropy_coef: float = 0.005
-        value_coef: float = 0.5
-        max_grad_norm: float = 0.5
-        learning_rate: float = 1e-4
-        ppo_learning_rate: float = 1e-4
-        batch_size: int = 256
-        n_epochs: int = 10
-        update_interval: int = 512
-        ppo_update_interval: int = 256
+        gamma: float = 0.98
+        gae_lambda: float = 0.97
+        clip_epsilon: float = 0.25
+        entropy_coef: float = 0.015
+        value_coef: float = 0.8
+        max_grad_norm: float = 1.0
+        learning_rate: float = 3e-4
+        ppo_learning_rate: float = 3e-4
+        batch_size: int = 512
+        n_epochs: int = 15
+        update_interval: int = 1024
+        ppo_update_interval: int = 512
 
         # Training settings
-        num_episodes: int = 150
+        num_episodes: int = 100
         eval_interval: int = 10
 
         # MLP Baseline settings
@@ -144,14 +144,14 @@ def configuration(dataclass):
         # DQN Hyperparameters
         buffer_size: int = 10000
         batch_size_dqn: int = 64
-        dqn_learning_rate: float = 1e-4
+        dqn_learning_rate: float = 5e-5
         epsilon_start: float = 1.0
         epsilon_end: float = 0.01
         epsilon_decay: float = 0.99
         target_update_freq: int = 100
 
         # A2C Hyperparameters
-        a2c_learning_rate: float = 3e-4
+        a2c_learning_rate: float = 1e-4
 
     config = Config()
     print(f"  - State dimension: {config.state_dim}")
@@ -312,7 +312,7 @@ def traffic_environment(checkBinary, config, np, os, time, traci):
                  # Try to close if we failed initialization
                  try:
                      self.connection.close()
-                 except: 
+                 except Exception: 
                      pass
                  raise
 
@@ -1209,6 +1209,10 @@ def train_rl_function(device, np, torch):
         initial_lr = config.learning_rate
         if agent_type == 'PPO' and hasattr(config, 'ppo_learning_rate'):
             initial_lr = config.ppo_learning_rate
+        elif agent_type == 'DQN' and hasattr(config, 'dqn_learning_rate'):
+            initial_lr = config.dqn_learning_rate
+        elif agent_type == 'A2C' and hasattr(config, 'a2c_learning_rate'):
+            initial_lr = config.a2c_learning_rate
 
         train_losses = []
         lr_multiplier = 1.0
@@ -1560,7 +1564,7 @@ def define_train_worker(threading):
             if 'env' in locals() and env:
                 try:
                     env.close()
-                except:
+                except Exception:
                     pass
             return agent_name, None, None
     print("train_worker() function defined")
@@ -2012,11 +2016,16 @@ def fig3_mlp_loss(mlp_losses, plt):
     ax3.set_title("Figure 3: MLP Baseline Training Loss", fontsize=14, fontweight='bold')
     ax3.grid(True, alpha=0.3)
 
-    ax3.annotate(f'Start: {mlp_losses[0]:.3f}', xy=(0, mlp_losses[0]), 
-                xytext=(5, mlp_losses[0]+0.1), fontsize=10)
-    ax3.annotate(f'End: {mlp_losses[-1]:.3f}', xy=(len(mlp_losses)-1, mlp_losses[-1]), 
-                xytext=(len(mlp_losses)-15, mlp_losses[-1]+0.1), fontsize=10)
+    ax3.annotate(f'Start: {mlp_losses[0]:.3f}', xy=(0, 1),
+                 xycoords='axes fraction', xytext=(0.02, 0.92), textcoords='axes fraction',
+                 fontsize=10, clip_on=False)
 
+    ax3.annotate(f'End: {mlp_losses[-1]:.3f}', xy=(1, 0), 
+                 xycoords='axes fraction', xytext=(0.70, 0.15), textcoords='axes fraction',
+                 fontsize=10, clip_on=False)
+
+    ax3.margins(y=0.15)
+    plt.subplots_adjust(top=0.88)
     plt.tight_layout()
     fig3
     return
@@ -2032,16 +2041,17 @@ def fig4_queue_comparison(all_eval_results, np, plt):
     _colors_bar = plt.cm.tab10(np.linspace(0, 1, len(_model_names)))
 
     _bars = ax4.bar(range(len(_model_names)), _queue_lengths, 
-                   color=_colors_bar, alpha=0.7, edgecolor="black")
+                    color=_colors_bar, alpha=0.7, edgecolor="black")
     ax4.set_xticks(range(len(_model_names)))
     ax4.set_xticklabels(_model_names, rotation=45, ha='right', fontsize=10)
     ax4.set_ylabel("Average Queue Length", fontsize=12)
     ax4.set_title("Figure 4: Queue Length Comparison (Lower is Better)", fontsize=14, fontweight='bold')
     ax4.grid(True, alpha=0.3, axis="y")
+    ax4.set_ylim(0, max(_queue_lengths) * 1.15)
 
     for _bar, _val in zip(_bars, _queue_lengths):
-        ax4.text(_bar.get_x() + _bar.get_width()/2, _bar.get_height() + 0.1,
-                f'{_val:.2f}', ha='center', va='bottom', fontsize=9)
+        ax4.text(_bar.get_x() + _bar.get_width()/2, _bar.get_height() + 0.03,
+                 f'{_val:.2f}', ha='center', va='bottom', fontsize=9, clip_on=False)
 
     plt.tight_layout()
     fig4
@@ -2109,15 +2119,15 @@ def fig7_queue_training(experiment_results, np, plt):
     """Figure 7: Queue Length During Training"""
     fig7, ax7 = plt.subplots(figsize=(10, 6))
 
-    _colors = {'PPO_Adam': 'blue', 'DQN_Adam': 'green', 'A2C_Adam': 'orange'}
+    _colors = {'PPO_Adam': 'blue', 'DQN_Adam': 'green', 'A2C_Adam': 'orange',
+              'PPO_SGD': 'red', 'PPO_RMSprop': 'purple'}
 
     for _name, _results in experiment_results.items():
-        if 'Adam' in _name:
-            _queue_data = _results["avg_queue_lengths"]
-            if len(_queue_data) >= 10:
-                _ma = np.convolve(_queue_data, np.ones(10) / 10, mode="valid")
-                ax7.plot(_ma, label=_name, color=_colors.get(_name, 'gray'), 
-                        linewidth=2, alpha=0.8)
+        _queue_data = _results["avg_queue_lengths"]
+        if len(_queue_data) >= 10:
+            _ma = np.convolve(_queue_data, np.ones(10) / 10, mode="valid")
+            ax7.plot(_ma, label=_name, color=_colors.get(_name, 'gray'), 
+                    linewidth=2, alpha=0.8)
 
     ax7.set_xlabel("Episode", fontsize=12)
     ax7.set_ylabel("Average Queue Length", fontsize=12)
@@ -2182,11 +2192,13 @@ def fig9_waiting_time(all_eval_results, np, plt):
 
 @app.cell
 def fig10_ppo_rewards(experiment_results, np, plt):
-    """Figure 10: PPO Adam Episode Rewards"""
+    """Figure 10: Best RL Agent Episode Rewards"""
     fig10, _ax = plt.subplots(figsize=(10, 6))
 
-    _ppo_data = experiment_results.get("PPO_Adam", {})
-    _rewards = _ppo_data.get("episode_rewards", [])
+    _best_agent = max(experiment_results.keys(), 
+                     key=lambda k: np.mean(experiment_results[k]['episode_rewards'][-50:]))
+    _agent_data = experiment_results.get(_best_agent, {})
+    _rewards = _agent_data.get("episode_rewards", [])
 
     _ax.plot(_rewards, alpha=0.5, color='blue', label='Raw')
     if len(_rewards) >= 10:
@@ -2195,7 +2207,7 @@ def fig10_ppo_rewards(experiment_results, np, plt):
 
     _ax.set_xlabel("Episode", fontsize=12)
     _ax.set_ylabel("Reward", fontsize=12)
-    _ax.set_title("Figure 10: PPO-Adam Episode Rewards", fontsize=14, fontweight='bold')
+    _ax.set_title(f"Figure 10: {_best_agent} Episode Rewards", fontsize=14, fontweight='bold')
     _ax.legend()
     _ax.grid(True, alpha=0.3)
 
@@ -2206,11 +2218,13 @@ def fig10_ppo_rewards(experiment_results, np, plt):
 
 @app.cell
 def fig11_ppo_queues(experiment_results, np, plt):
-    """Figure 11: PPO Adam Average Queue Length"""
+    """Figure 11: Best RL Agent Average Queue Length"""
     fig11, _ax = plt.subplots(figsize=(10, 6))
 
-    _ppo_data = experiment_results.get("PPO_Adam", {})
-    _queues = _ppo_data.get("avg_queue_lengths", [])
+    _best_agent = max(experiment_results.keys(), 
+                     key=lambda k: np.mean(experiment_results[k]['episode_rewards'][-50:]))
+    _agent_data = experiment_results.get(_best_agent, {})
+    _queues = _agent_data.get("avg_queue_lengths", [])
 
     _ax.plot(_queues, alpha=0.5, color='green', label='Raw')
     if len(_queues) >= 10:
@@ -2219,7 +2233,7 @@ def fig11_ppo_queues(experiment_results, np, plt):
 
     _ax.set_xlabel("Episode", fontsize=12)
     _ax.set_ylabel("Queue Length", fontsize=12)
-    _ax.set_title("Figure 11: PPO-Adam Average Queue Length", fontsize=14, fontweight='bold')
+    _ax.set_title(f"Figure 11: {_best_agent} Average Queue Length", fontsize=14, fontweight='bold')
     _ax.legend()
     _ax.grid(True, alpha=0.3)
 
@@ -2230,18 +2244,20 @@ def fig11_ppo_queues(experiment_results, np, plt):
 
 @app.cell
 def fig12_ppo_reward_dist(experiment_results, np, plt):
-    """Figure 12: PPO Adam Reward Distribution"""
+    """Figure 12: Best RL Agent Reward Distribution"""
     fig12, _ax = plt.subplots(figsize=(10, 6))
 
-    _ppo_data = experiment_results.get("PPO_Adam", {})
-    _rewards = _ppo_data.get("episode_rewards", [])
+    _best_agent = max(experiment_results.keys(), 
+                     key=lambda k: np.mean(experiment_results[k]['episode_rewards'][-50:]))
+    _agent_data = experiment_results.get(_best_agent, {})
+    _rewards = _agent_data.get("episode_rewards", [])
 
     _ax.hist(_rewards, bins=20, color='blue', alpha=0.7, edgecolor='black')
     _ax.axvline(np.mean(_rewards), color='red', linestyle='--', label=f'Mean: {np.mean(_rewards):.1f}')
 
     _ax.set_xlabel("Reward", fontsize=12)
     _ax.set_ylabel("Frequency", fontsize=12)
-    _ax.set_title("Figure 12: PPO-Adam Reward Distribution", fontsize=14, fontweight='bold')
+    _ax.set_title(f"Figure 12: {_best_agent} Reward Distribution", fontsize=14, fontweight='bold')
     _ax.legend()
     _ax.grid(True, alpha=0.3)
 
@@ -2252,17 +2268,19 @@ def fig12_ppo_reward_dist(experiment_results, np, plt):
 
 @app.cell
 def fig13_ppo_cumulative(experiment_results, np, plt):
-    """Figure 13: PPO Adam Cumulative Reward"""
+    """Figure 13: Best RL Agent Cumulative Reward"""
     fig13, _ax = plt.subplots(figsize=(10, 6))
 
-    _ppo_data = experiment_results.get("PPO_Adam", {})
-    _rewards = _ppo_data.get("episode_rewards", [])
+    _best_agent = max(experiment_results.keys(), 
+                     key=lambda k: np.mean(experiment_results[k]['episode_rewards'][-50:]))
+    _agent_data = experiment_results.get(_best_agent, {})
+    _rewards = _agent_data.get("episode_rewards", [])
     _cumulative = np.cumsum(_rewards)
 
     _ax.plot(_cumulative, color='purple', linewidth=2)
     _ax.set_xlabel("Episode", fontsize=12)
     _ax.set_ylabel("Cumulative Reward", fontsize=12)
-    _ax.set_title("Figure 13: PPO-Adam Cumulative Reward", fontsize=14, fontweight='bold')
+    _ax.set_title(f"Figure 13: {_best_agent} Cumulative Reward", fontsize=14, fontweight='bold')
     _ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -2273,11 +2291,11 @@ def fig13_ppo_cumulative(experiment_results, np, plt):
 @app.cell
 def fig14_model_radar(all_eval_results, np, plt):
     """Figure 14: Radar Chart - Model Performance Comparison"""
-    fig14, ax14 = plt.subplots(figsize=(8, 8), subplot_kw=dict(projection='polar'))
+    fig14, ax14 = plt.subplots(figsize=(9, 9), subplot_kw=dict(projection='polar'))
 
-    # Select key models
-    _models = ['Fixed-Time', 'Max Pressure', 'PPO_Adam', 'DQN_Adam', 'A2C_Adam']
-    _models = [m for m in _models if m in all_eval_results]
+    _rl_models = [k for k in all_eval_results.keys() if k not in ['Fixed-Time', 'Max Pressure', 'MLP']]
+    _baselines = ['Fixed-Time', 'Max Pressure']
+    _models = [m for m in (_baselines + _rl_models) if m in all_eval_results][:6]
 
     # Metrics (normalized 0-1, higher is better for all)
     _categories = ['Reward', 'Low Queue', 'Low Wait', 'Throughput']
@@ -2290,7 +2308,7 @@ def fig14_model_radar(all_eval_results, np, plt):
     _angles = np.linspace(0, 2*np.pi, len(_categories), endpoint=False).tolist()
     _angles += _angles[:1]  # Complete the circle
 
-    _colors = ['gray', 'orange', 'blue', 'green', 'red']
+    _colors = plt.cm.tab10(np.linspace(0, 1, len(_models)))
 
     for _idx, _model in enumerate(_models):
         _res = all_eval_results[_model]
@@ -2307,7 +2325,7 @@ def fig14_model_radar(all_eval_results, np, plt):
     ax14.set_xticks(_angles[:-1])
     ax14.set_xticklabels(_categories, fontsize=11)
     ax14.set_title("Figure 14: Model Performance Radar Chart", fontsize=14, fontweight='bold', pad=20)
-    ax14.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0))
+    ax14.legend(loc='upper right', bbox_to_anchor=(1.35, 1.0), fontsize=9)
     plt.tight_layout()
     fig14
     return
@@ -2475,11 +2493,16 @@ def fig20_lr_decay(config, np, plt):
     ax20.grid(True, alpha=0.3)
     ax20.set_ylim(0, _initial_lr * 1.1)
 
-    ax20.annotate(f'Start: {_initial_lr:.4f}', xy=(0, _initial_lr), 
-                 xytext=(5, _initial_lr + 0.0001), fontsize=10)
-    ax20.annotate(f'End: {_lr_schedule[-1]:.5f}', xy=(config.num_episodes-1, _lr_schedule[-1]), 
-                 xytext=(config.num_episodes-30, _lr_schedule[-1] + 0.0002), fontsize=10)
+    ax20.annotate(f'Start: {_initial_lr:.4f}', xy=(0, 1),
+                  xycoords='axes fraction', xytext=(0.02, 0.92), textcoords='axes fraction',
+                  fontsize=10, clip_on=False)
 
+    ax20.annotate(f'End: {_lr_schedule[-1]:.5f}', xy=(1, 0),
+                  xycoords='axes fraction', xytext=(0.65, 0.15), textcoords='axes fraction',
+                  fontsize=10, clip_on=False)
+
+    ax20.margins(y=0.1)
+    plt.subplots_adjust(top=0.88)
     plt.tight_layout()
     fig20
     return
