@@ -2200,10 +2200,6 @@ def fig10_ppo_rewards(experiment_results, np, plt):
     _best_agent = max(_rl_models.keys(), 
                      key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
     
-    if not _best_agent:
-        _ax.text(0.5, 0.5, 'No RL agent data available', ha='center', va='center')
-        return
-    
     _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
 
@@ -2232,10 +2228,6 @@ def fig11_ppo_queues(experiment_results, np, plt):
                   if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
     _best_agent = max(_rl_models.keys(), 
                      key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
-    
-    if not _best_agent:
-        _ax.text(0.5, 0.5, 'No RL agent data available', ha='center', va='center')
-        return
     
     _agent_data = _rl_models[_best_agent]
     _queues = _agent_data.get("avg_queue_lengths", [])
@@ -2266,10 +2258,6 @@ def fig12_ppo_reward_dist(experiment_results, np, plt):
     _best_agent = max(_rl_models.keys(), 
                      key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
     
-    if not _best_agent:
-        _ax.text(0.5, 0.5, 'No RL agent data available', ha='center', va='center')
-        return
-    
     _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
 
@@ -2296,10 +2284,6 @@ def fig13_ppo_cumulative(experiment_results, np, plt):
                   if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
     _best_agent = max(_rl_models.keys(), 
                      key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
-    
-    if not _best_agent:
-        _ax.text(0.5, 0.5, 'No RL agent data available', ha='center', va='center')
-        return
     
     _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
@@ -2692,10 +2676,6 @@ def table7_rl_comparison(all_eval_results, mo):
     
     _rl_agents = {k: v for k, v in all_eval_results.items() 
                   if k not in ["Fixed-Time", "Max Pressure", "MLP"]}
-
-    if not _rl_agents:
-        mo.md("### Table 7: No RL agent data available")
-        return
 
     def _get_best_agent(_metric, _higher_is_better=True):
         _vals = {k: v.get(_metric, 0) for k, v in _rl_agents.items() if v.get(_metric) is not None}
