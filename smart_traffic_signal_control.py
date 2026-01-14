@@ -2008,7 +2008,7 @@ def fig2_reward_comparison(all_eval_results, np, plt):
     ax2.set_xticks(range(len(_model_names)))
     ax2.set_xticklabels(_model_names, rotation=45, ha='right', fontsize=10)
     ax2.set_ylabel("Mean Reward", fontsize=12)
-    ax2.set_title("Figure 2: Reward Comparison Across All Methods", fontsize=14, fontweight='bold')
+    ax2.set_title("Figure 2: Mean Reward Comparison Across All Methods", fontsize=14, fontweight='bold')
     ax2.grid(True, alpha=0.3, axis="y")
     ax2.axhline(y=0, color="black", linestyle="--", alpha=0.5)
 
@@ -2207,14 +2207,14 @@ def fig9_waiting_time(all_eval_results, np, plt):
 
 
 @app.cell
-def fig10_ppo_rewards(experiment_results, np, plt):
+def fig10_ppo_rewards(all_eval_results, experiment_results, np, plt):
     """Figure 10: Best RL Agent Episode Rewards"""
     fig10, _ax = plt.subplots(figsize=(10, 6))
 
     _rl_models = {k: v for k, v in experiment_results.items() 
                   if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
     _best_agent = max(_rl_models.keys(), 
-                     key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
+                     key=lambda k: all_eval_results[k]['mean_reward']) if _rl_models else None
 
     _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
@@ -2226,7 +2226,7 @@ def fig10_ppo_rewards(experiment_results, np, plt):
 
     _ax.set_xlabel("Episode", fontsize=12)
     _ax.set_ylabel("Reward", fontsize=12)
-    _ax.set_title(f"Figure 10: {_best_agent} Episode Rewards", fontsize=14, fontweight='bold')
+    _ax.set_title(f"Figure 10: {_best_agent} Episode Rewards (Training)", fontsize=14, fontweight='bold')
     _ax.legend()
     _ax.grid(True, alpha=0.3)
 
@@ -2236,14 +2236,14 @@ def fig10_ppo_rewards(experiment_results, np, plt):
 
 
 @app.cell
-def fig11_ppo_queues(experiment_results, np, plt):
+def fig11_ppo_queues(all_eval_results, experiment_results, np, plt):
     """Figure 11: Best RL Agent Average Queue Length"""
     fig11, _ax = plt.subplots(figsize=(10, 6))
 
     _rl_models = {k: v for k, v in experiment_results.items() 
                   if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
     _best_agent = max(_rl_models.keys(), 
-                     key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
+                     key=lambda k: all_eval_results[k]['mean_reward']) if _rl_models else None
 
     _agent_data = _rl_models[_best_agent]
     _queues = _agent_data.get("avg_queue_lengths", [])
@@ -2255,7 +2255,7 @@ def fig11_ppo_queues(experiment_results, np, plt):
 
     _ax.set_xlabel("Episode", fontsize=12)
     _ax.set_ylabel("Queue Length", fontsize=12)
-    _ax.set_title(f"Figure 11: {_best_agent} Average Queue Length", fontsize=14, fontweight='bold')
+    _ax.set_title(f"Figure 11: {_best_agent} Average Queue Length (Training)", fontsize=14, fontweight='bold')
     _ax.legend()
     _ax.grid(True, alpha=0.3)
 
@@ -2265,14 +2265,14 @@ def fig11_ppo_queues(experiment_results, np, plt):
 
 
 @app.cell
-def fig12_ppo_reward_dist(experiment_results, np, plt):
+def fig12_ppo_reward_dist(all_eval_results, experiment_results, np, plt):
     """Figure 12: Best RL Agent Reward Distribution"""
     fig12, _ax = plt.subplots(figsize=(10, 6))
 
     _rl_models = {k: v for k, v in experiment_results.items() 
                   if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
     _best_agent = max(_rl_models.keys(), 
-                     key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
+                     key=lambda k: all_eval_results[k]['mean_reward']) if _rl_models else None
 
     _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
@@ -2282,7 +2282,7 @@ def fig12_ppo_reward_dist(experiment_results, np, plt):
 
     _ax.set_xlabel("Reward", fontsize=12)
     _ax.set_ylabel("Frequency", fontsize=12)
-    _ax.set_title(f"Figure 12: {_best_agent} Reward Distribution", fontsize=14, fontweight='bold')
+    _ax.set_title(f"Figure 12: {_best_agent} Reward Distribution (Training)", fontsize=14, fontweight='bold')
     _ax.legend()
     _ax.grid(True, alpha=0.3)
 
@@ -2292,14 +2292,14 @@ def fig12_ppo_reward_dist(experiment_results, np, plt):
 
 
 @app.cell
-def fig13_ppo_cumulative(experiment_results, np, plt):
+def fig13_ppo_cumulative(all_eval_results, experiment_results, np, plt):
     """Figure 13: Best RL Agent Cumulative Reward"""
     fig13, _ax = plt.subplots(figsize=(10, 6))
 
     _rl_models = {k: v for k, v in experiment_results.items() 
                   if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
     _best_agent = max(_rl_models.keys(), 
-                     key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
+                     key=lambda k: all_eval_results[k]['mean_reward']) if _rl_models else None
 
     _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
@@ -2308,7 +2308,7 @@ def fig13_ppo_cumulative(experiment_results, np, plt):
     _ax.plot(_cumulative, color='purple', linewidth=2)
     _ax.set_xlabel("Episode", fontsize=12)
     _ax.set_ylabel("Cumulative Reward", fontsize=12)
-    _ax.set_title(f"Figure 13: {_best_agent} Cumulative Reward", fontsize=14, fontweight='bold')
+    _ax.set_title(f"Figure 13: {_best_agent} Cumulative Reward (Training)", fontsize=14, fontweight='bold')
     _ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -2496,43 +2496,6 @@ def fig19_entropy_loss(experiment_results, np, plt):
     ax19.grid(True, alpha=0.3)
     plt.tight_layout()
     fig19
-    return
-
-
-@app.cell
-def fig20_lr_decay(config, np, plt):
-    """Figure 20: Learning Rate Decay Schedule"""
-    fig20, ax20 = plt.subplots(figsize=(8, 5))
-
-    _episodes = np.arange(config.num_episodes)
-    _initial_lr = config.learning_rate
-
-    # Linear decay schedule (matches the training loop)
-    _lr_schedule = [max(0.1, 1.0 - ep / config.num_episodes) * _initial_lr for ep in _episodes]
-
-    ax20.plot(_episodes, _lr_schedule, color='blue', linewidth=2, label='Linear Decay')
-    ax20.axhline(y=_initial_lr, color='green', linestyle='--', alpha=0.5, label=f'Initial LR: {_initial_lr}')
-    ax20.axhline(y=_initial_lr * 0.1, color='red', linestyle='--', alpha=0.5, label=f'Min LR: {_initial_lr * 0.1}')
-
-    ax20.set_xlabel("Episode", fontsize=12)
-    ax20.set_ylabel("Learning Rate", fontsize=12)
-    ax20.set_title("Figure 20: Learning Rate Decay Schedule", fontsize=14, fontweight='bold')
-    ax20.legend(fontsize=10)
-    ax20.grid(True, alpha=0.3)
-    ax20.set_ylim(0, _initial_lr * 1.1)
-
-    ax20.annotate(f'Start: {_initial_lr:.4f}', xy=(0, 1),
-                  xycoords='axes fraction', xytext=(0.02, 0.92), textcoords='axes fraction',
-                  fontsize=10, clip_on=False)
-
-    ax20.annotate(f'End: {_lr_schedule[-1]:.5f}', xy=(1, 0),
-                  xycoords='axes fraction', xytext=(0.65, 0.15), textcoords='axes fraction',
-                  fontsize=10, clip_on=False)
-
-    ax20.margins(y=0.1)
-    plt.subplots_adjust(top=0.88)
-    plt.tight_layout()
-    fig20
     return
 
 
@@ -2967,7 +2930,7 @@ def performance_summary_table(all_eval_results, mo):
 
 
 @app.cell
-def key_findings_table(all_eval_results, experiment_results, mo, np):
+def key_findings_table(all_eval_results, mo):
     """Key Findings Table"""
     _best_model = max(all_eval_results.keys(), key=lambda k: all_eval_results[k]['mean_reward'])
     _best_reward = all_eval_results[_best_model]['mean_reward']
@@ -2983,9 +2946,9 @@ def key_findings_table(all_eval_results, experiment_results, mo, np):
     _baselines = {k: v for k, v in all_eval_results.items() if k in ["Fixed-Time", "Max Pressure", "MLP"]}
     _best_baseline = max(_baselines.keys(), key=lambda k: _baselines[k]['mean_reward']) if _baselines else "N/A"
 
-    _ppo_variants = {k: v for k, v in experiment_results.items() if 'PPO' in k}
+    _ppo_variants = {k: v for k, v in all_eval_results.items() if 'PPO' in k}
     _best_optimizer_key = max(_ppo_variants.keys(), 
-                        key=lambda k: np.mean(_ppo_variants[k]['episode_rewards'][-50:])) if _ppo_variants else "N/A"
+                        key=lambda k: _ppo_variants[k]['mean_reward']) if _ppo_variants else "N/A"
     _best_optimizer = _best_optimizer_key.replace("PPO_", "") if _best_optimizer_key != "N/A" else "N/A"
 
     def calc_improvement(val1, val2):
