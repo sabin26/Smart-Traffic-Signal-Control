@@ -6,17 +6,16 @@ app = marimo.App(width="medium")
 @app.cell(hide_code=True)
 def title_cell():
     import marimo as mo
+    
+    mo.md("""
+    # Smart Traffic Signal Control in Kathmandu
+    ## Comparing Reinforcement Learning Approaches
 
-    mo.md(
-        """
-        # Smart Traffic Signal Control in Kathmandu
-        ## Comparing Reinforcement Learning Approaches
+    **Student:** Sabin Neupane | **ID:** 250136 | **Module:** Artificial Neural Network (STW7088CEM)
 
-        **Student:** Sabin Neupane | **ID:** 250136 | **Module:** Artificial Neural Network (STW7088CEM)
-
-        This notebook implements an adaptive traffic signal control system using:
-        - **Baselines:** Fixed-time controller, Max Pressure controller, and supervised MLP
-        - **RL Agents:** PPO, DQN, and A2C with different optimizers
+    This notebook implements an adaptive traffic signal control system using:
+    - **Baselines:** Fixed-time controller, Max Pressure controller, and supervised MLP
+    - **RL Agents:** PPO, DQN, and A2C with different optimizers
 
         ---
         """
@@ -50,6 +49,11 @@ def setup_imports():
     import sys
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import threading
+    import traci
+    from sumolib import checkBinary
+    import time
+    import traceback
+    import subprocess
 
     # SUMO imports
     if "SUMO_HOME" in os.environ:
@@ -57,9 +61,6 @@ def setup_imports():
         sys.path.append(tools)
     else:
         sys.exit("Please declare environment variable 'SUMO_HOME'")
-
-    import traci
-    from sumolib import checkBinary
 
     warnings.filterwarnings("ignore")
 
@@ -85,8 +86,12 @@ def setup_imports():
         os,
         plt,
         random,
+        subprocess,
+        sys,
         threading,
+        time,
         torch,
+        traceback,
         traci,
     )
 
@@ -179,7 +184,16 @@ def env_header(mo):
 
 
 @app.cell
-def traffic_environment(checkBinary, config, np, os, time, traci):
+def traffic_environment(
+    checkBinary,
+    config,
+    np,
+    os,
+    subprocess,
+    sys,
+    time,
+    traci,
+):
     class SUMOTrafficEnv:
         """SUMO-based Traffic Environment for Kathmandu traffic simulation."""
 
@@ -228,7 +242,6 @@ def traffic_environment(checkBinary, config, np, os, time, traci):
 
         def _start_sumo(self):
             """Start SUMO simulation with proper cleanup"""
-            import time
 
             try:
                 traci.getConnection(self.label).close()
@@ -251,10 +264,12 @@ def traffic_environment(checkBinary, config, np, os, time, traci):
                 "-c", self.sumo_cfg,
                 "--no-warnings",
                 "--no-step-log",
+                "--quit-on-end",
                 "--waiting-time-memory", "1000",
                 "--time-to-teleport", "-1",
                 "--random",
                 "--output-prefix", f"{self.label}_",
+                "--message-log", os.devnull,
             ]
 
             # Full command for start (includes binary)
@@ -268,10 +283,26 @@ def traffic_environment(checkBinary, config, np, os, time, traci):
                     except (traci.exceptions.TraCIException, KeyError):
                         pass
 
-                    if self.port:
-                        traci.start(full_cmd, port=self.port, label=self.label)
-                    else:
-                        traci.start(full_cmd, label=self.label)
+                    # Context manager to suppress stderr (for PROJ warnings)
+                    class SuppressStderr:
+                        def __enter__(self):
+                            self.null_fd = os.open(os.devnull, os.O_RDWR)
+                            self.save_fd = os.dup(2)
+                            os.dup2(self.null_fd, 2)
+                            return self
+                        
+                        def __exit__(self, *_):
+                            os.dup2(self.save_fd, 2)
+                            os.close(self.save_fd)
+                            os.close(self.null_fd)
+                    
+                    # Suppress SUMO output including PROJ library warnings
+                    with open(os.devnull, 'w') as devnull:
+                        with SuppressStderr():
+                            if self.port:
+                                traci.start(full_cmd, port=self.port, label=self.label, stdout=devnull)
+                            else:
+                                traci.start(full_cmd, label=self.label, stdout=devnull)
 
                     # Give it a moment to initialize
                     time.sleep(2 + attempt)
@@ -284,7 +315,7 @@ def traffic_environment(checkBinary, config, np, os, time, traci):
                     print(f"Attempt {attempt+1}/{max_retries} failed to start SUMO: {e}", flush=True)
                     try:
                          traci.getConnection(self.label).close()
-                    except:
+                    except Exception:
                          pass
 
                     if attempt < max_retries - 1:
@@ -1195,7 +1226,7 @@ def training_header(mo):
 @app.cell
 def train_rl_function(device, np, torch):
     """Training Loop for RL Agents"""
-    def train_rl_agent(agent, env, config, agent_type='PPO', verbose=True):
+    def train_rl_agent(agent, env, config, agent_type='PPO', agent_name=None, verbose=True):
         """Universal training loop for PPO, DQN, and A2C agents"""
         episode_rewards = []
         episode_lengths = []
@@ -1287,13 +1318,14 @@ def train_rl_function(device, np, torch):
                 if episode_reward > best_reward:
                     best_reward = episode_reward
 
-                if verbose and (episode + 1) % 5 == 0:
-                    recent_rewards = episode_rewards[-5:] if len(episode_rewards) >= 5 else episode_rewards
+                if verbose:
                     elapsed_pct = (episode + 1) / config.num_episodes * 100
+                    agent_label = f"[{agent_name}] " if agent_name else ""
                     print(
-                        f"[{elapsed_pct:5.1f}%] Episode {episode + 1}/{config.num_episodes} | "
-                        f"Reward: {episode_reward:.2f} | Avg(5): {np.mean(recent_rewards):.2f} | "
-                        f"Best: {best_reward:.2f} | Queue: {metrics['avg_queue_length']:.2f}"
+                        f"{agent_label}[{elapsed_pct:5.1f}%] Episode {episode + 1}/{config.num_episodes} | "
+                        f"Reward: {episode_reward:.2f} | "
+                        f"Best: {best_reward:.2f} | Queue: {metrics['avg_queue_length']:.2f}",
+                        flush=True
                     )
 
         finally:
@@ -1406,7 +1438,6 @@ def create_mlp_training_data(
         controller = MaxPressureController()
 
         for ep in range(num_episodes):
-            print(f"  MLP Data - Episode {ep + 1}/{num_episodes}", end="\r")
             state = env.reset()
             step_count = 0
 
@@ -1521,9 +1552,8 @@ def init_experiment_storage():
 
 
 @app.cell
-def define_train_worker(threading):
+def define_train_worker(threading, time, traceback):
     """Define worker function for parallel training"""
-    import time
 
     # Global lock for staggered SUMO initialization
     sumo_start_lock = threading.Lock()
@@ -1533,33 +1563,30 @@ def define_train_worker(threading):
         thread_id = threading.current_thread().name
 
         time.sleep(start_delay)
-        print(f"[Thread {thread_id}] Starting training: {agent_name} on port {port}")
+        print(f"[{agent_name}] Starting on port {port}")
 
         try:
             with sumo_start_lock:
-                print(f"[Thread {thread_id}] Initializing SUMO environment for {agent_name}...")
                 env, agent, agent_type = agent_config_func(config, device, TrafficIntersection, port)
 
                 if hasattr(env, '_start_sumo'):
-                    print(f"[Thread {thread_id}] Pre-launching SUMO for {agent_name}...")
                     env._start_sumo()
 
                 time.sleep(5)
 
-            print(f"[Thread {thread_id}] {agent_name} starting training...")
-            results = train_rl_agent(agent, env, config, agent_type=agent_type, verbose=False)
+            print(f"[{agent_name}] Training in progress...")
+            results = train_rl_agent(agent, env, config, agent_type=agent_type, agent_name=agent_name, verbose=True)
 
             final_reward = results["episode_rewards"][-10:]
             avg_final_reward = sum(final_reward) / len(final_reward) if final_reward else 0
-            print(f"[Thread {thread_id}] ✓ {agent_name} complete! Final avg reward: {avg_final_reward:.2f}")
+            print(f"[{agent_name}] ✓ Complete! Final avg reward: {avg_final_reward:.2f}")
 
             if env: 
                 env.close()
 
             return agent_name, agent, results
         except Exception as e:
-            print(f"[Thread {thread_id}] ✗ {agent_name} failed: {e}")
-            import traceback
+            print(f"[{agent_name}] ✗ Failed: {e}")
             traceback.print_exc()
             if 'env' in locals() and env:
                 try:
@@ -1568,7 +1595,7 @@ def define_train_worker(threading):
                     pass
             return agent_name, None, None
     print("train_worker() function defined")
-    return time, train_worker
+    return (train_worker,)
 
 
 @app.cell
@@ -1613,11 +1640,11 @@ def agent_config_functions(A2CAgent, ActorCritic, DQNAgent, PPOAgent, optim):
 
     print("Agent configuration functions defined")
     return (
-        create_ppo_adam,
-        create_dqn_adam,
         create_a2c_adam,
-        create_ppo_sgd,
+        create_dqn_adam,
+        create_ppo_adam,
         create_ppo_rmsprop,
+        create_ppo_sgd,
     )
 
 
@@ -1636,6 +1663,7 @@ def train_all_parallel(
     device,
     experiment_results,
     os,
+    traceback,
     train_rl_agent,
     train_worker,
 ):
@@ -1687,7 +1715,6 @@ def train_all_parallel(
                     print(f"\n[WARNING] {name} failed to complete")
             except Exception as e:
                 print(f"\n[ERROR] {agent_name} encountered exception: {e}")
-                import traceback
                 traceback.print_exc()
 
     print("\n" + "=" * 80)
@@ -2199,7 +2226,7 @@ def fig10_ppo_rewards(experiment_results, np, plt):
                   if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
     _best_agent = max(_rl_models.keys(), 
                      key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
-    
+
     _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
 
@@ -2228,7 +2255,7 @@ def fig11_ppo_queues(experiment_results, np, plt):
                   if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
     _best_agent = max(_rl_models.keys(), 
                      key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
-    
+
     _agent_data = _rl_models[_best_agent]
     _queues = _agent_data.get("avg_queue_lengths", [])
 
@@ -2257,7 +2284,7 @@ def fig12_ppo_reward_dist(experiment_results, np, plt):
                   if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
     _best_agent = max(_rl_models.keys(), 
                      key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
-    
+
     _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
 
@@ -2284,7 +2311,7 @@ def fig13_ppo_cumulative(experiment_results, np, plt):
                   if k not in ['Fixed-Time', 'Max Pressure', 'MLP'] and 'episode_rewards' in v}
     _best_agent = max(_rl_models.keys(), 
                      key=lambda k: np.mean(_rl_models[k]['episode_rewards'][-50:])) if _rl_models else None
-    
+
     _agent_data = _rl_models[_best_agent]
     _rewards = _agent_data.get("episode_rewards", [])
     _cumulative = np.cumsum(_rewards)
@@ -2673,7 +2700,7 @@ def table6_improvement(all_eval_results, mo):
 @app.cell
 def table7_rl_comparison(all_eval_results, mo):
     """Table 7: RL Algorithm Comparison"""
-    
+
     _rl_agents = {k: v for k, v in all_eval_results.items() 
                   if k not in ["Fixed-Time", "Max Pressure", "MLP"]}
 
@@ -2867,7 +2894,7 @@ def table13_computational_stats(config, experiment_results, mo, np):
 
     _rl_experiments = {k: v for k, v in experiment_results.items() 
                        if k not in ['Fixed-Time', 'Max Pressure', 'MLP']}
-    
+
     _total_experiments = len(_rl_experiments)
     _total_episodes = config.num_episodes * _total_experiments
 
@@ -2875,11 +2902,11 @@ def table13_computational_stats(config, experiment_results, mo, np):
     for _name, _data in sorted(_rl_experiments.items()):
         _rewards = _data.get("episode_rewards", [])
         _lengths = _data.get("episode_lengths", [])
-        
+
         _avg_len = np.mean(_lengths) if _lengths else 0
         _total_steps = sum(_lengths) if _lengths else 0
         _final_reward = np.mean(_rewards[-10:]) if len(_rewards) >= 10 else 0
-        
+
         _model_rows.append(
             f"| {_name} | {_avg_len:.1f} | {_total_steps:,} | {_final_reward:.2f} |"
         )
