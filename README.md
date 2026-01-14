@@ -26,7 +26,7 @@ This project implements and compares multiple traffic signal control strategies:
 
 ```
 smart_traffic_signal_control/
-├── README.md                              # This file
+├── README.md
 ├── smart_traffic_signal_control.py        # Main application (Marimo notebook)
 └── sumo/
    └── kathmandu/
