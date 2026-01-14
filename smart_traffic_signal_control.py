@@ -1,12 +1,12 @@
 import marimo
 
-app = marimo.App(width="medium")
+app = marimo.App(width="medium", auto_download=["html", "ipynb"])
 
 
 @app.cell(hide_code=True)
 def title_cell():
     import marimo as mo
-    
+
     mo.md("""
     # Smart Traffic Signal Control in Kathmandu
     ## Comparing Reinforcement Learning Approaches
@@ -86,8 +86,6 @@ def setup_imports():
         os,
         plt,
         random,
-        subprocess,
-        sys,
         threading,
         time,
         torch,
@@ -184,16 +182,7 @@ def env_header(mo):
 
 
 @app.cell
-def traffic_environment(
-    checkBinary,
-    config,
-    np,
-    os,
-    subprocess,
-    sys,
-    time,
-    traci,
-):
+def traffic_environment(checkBinary, config, np, os, time, traci):
     class SUMOTrafficEnv:
         """SUMO-based Traffic Environment for Kathmandu traffic simulation."""
 
@@ -290,12 +279,12 @@ def traffic_environment(
                             self.save_fd = os.dup(2)
                             os.dup2(self.null_fd, 2)
                             return self
-                        
+
                         def __exit__(self, *_):
                             os.dup2(self.save_fd, 2)
                             os.close(self.save_fd)
                             os.close(self.null_fd)
-                    
+
                     # Suppress SUMO output including PROJ library warnings
                     with open(os.devnull, 'w') as devnull:
                         with SuppressStderr():
